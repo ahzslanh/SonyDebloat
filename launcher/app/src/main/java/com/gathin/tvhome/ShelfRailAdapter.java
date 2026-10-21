@@ -42,6 +42,8 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
 
     private final int railIndex;
     private final List<Shelves.Item> items;
+    /** The RecyclerView this adapter drives, so a focused poster can be slid fully into view. */
+    private RecyclerView rail;
     private final PosterCache cache;
     private final Listener listener;
 
@@ -50,6 +52,18 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         this.items = items;
         this.cache = cache;
         this.listener = listener;
+    }
+
+    @Override
+    public void onAttachedToRecyclerView(@NonNull RecyclerView rv) {
+        super.onAttachedToRecyclerView(rv);
+        rail = rv;
+    }
+
+    @Override
+    public void onDetachedFromRecyclerView(@NonNull RecyclerView rv) {
+        super.onDetachedFromRecyclerView(rv);
+        if (rail == rv) rail = null;
     }
 
     final class PosterVh extends RecyclerView.ViewHolder {
@@ -108,7 +122,10 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
             v.animate().scaleX(focused ? FOCUS_SCALE : 1f)
                     .scaleY(focused ? FOCUS_SCALE : 1f).setDuration(140).start();
             h.name.setAlpha(focused ? 1f : 0f);
-            if (focused) listener.onPosterFocused(item);
+            if (focused) {
+                listener.onPosterFocused(item);
+                revealFully(h);
+            }
         });
         h.card.setOnClickListener(v -> listener.onPosterClicked(item));
         h.card.setOnLongClickListener(v -> {
@@ -150,6 +167,27 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         for (int ahead = 1; ahead <= 2 && position + ahead < items.size(); ahead++) {
             cache.prefetch(items.get(position + ahead).posterUrl);
         }
+    }
+
+    /**
+     * Slides the rail so this poster is fully on screen, with a margin at either end. Without this,
+     * the D-pad can move focus onto #10 while it is still half past the edge.
+     */
+    private void revealFully(final PosterVh h) {
+        final RecyclerView rv = rail;
+        if (rv == null) return;
+        final View item = h.itemView;
+        final int margin = Math.round(90 * rv.getResources().getDisplayMetrics().density);
+        rv.post(() -> {
+            if (rv.getAdapter() != this) return;
+            int left = item.getLeft() - rv.getPaddingLeft();
+            int right = item.getRight() - (rv.getWidth() - rv.getPaddingRight());
+            if (left < margin) {
+                rv.smoothScrollBy(left - margin, 0);
+            } else if (right > -margin) {
+                rv.smoothScrollBy(right + margin, 0);
+            }
+        });
     }
 
     /** A poster finished downloading: rebind the visible tile showing it. */

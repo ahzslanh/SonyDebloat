@@ -60,12 +60,15 @@ final class Shelves {
         final String title;
         final String posterUrl;
         final String year;
+        /** Netflix's own title id, so OK can open the title page directly. Null for TMDB-only shelves. */
+        final String netflixId;
 
-        Item(int rank, String title, String posterUrl, String year) {
+        Item(int rank, String title, String posterUrl, String year, String netflixId) {
             this.rank = rank;
             this.title = title;
             this.posterUrl = posterUrl;
             this.year = year;
+            this.netflixId = netflixId;
         }
     }
 
@@ -138,7 +141,9 @@ final class Shelves {
     private static boolean isStale(String text) {
         if (text == null) return true;
         try {
-            long at = new JSONObject(text).optLong("fetchedAt", 0);
+            JSONObject o = new JSONObject(text);
+            if (o.optInt("version", 0) < 3) return true;   // older cache has no Netflix ids
+            long at = o.optLong("fetchedAt", 0);
             return System.currentTimeMillis() - at > TTL_MS;
         } catch (Exception e) {
             return true;
@@ -172,17 +177,32 @@ final class Shelves {
         List<Item> out = new ArrayList<>();
         try {
             String html = get(url);
-            List<String> titles = titles(html);
-            for (String t : titles) {
-                if (out.size() >= COUNT) break;
+            // The Top 10 payload carries "top10Video":{"title":"...","videoId":<netflix id>} for each
+            // rank, which is exactly what Netflix's /title/<id> deep link needs.
+            Matcher m = Pattern.compile(
+                    "\"top10Video\":\\{[^}]*?\"title\":\"([^\"]{1,80})\"[^}]*?\"videoId\":(\\d+)")
+                    .matcher(html);
+            while (m.find() && out.size() < COUNT) {
+                String raw = m.group(1);
+                String netflixId = m.group(2);
+                String t = cleanTitle(raw);
+                if (t.isEmpty() || out.stream().anyMatch(i -> i.title.equals(t))) continue;
                 String[] hit = tmdbLookup(tmdbKey, tmdbKind, t);
                 if (hit == null) continue;
-                out.add(new Item(out.size() + 1, t, hit[0], hit[1]));
+                out.add(new Item(out.size() + 1, t, hit[0], hit[1], netflixId));
             }
         } catch (Exception e) {
             Log.w(TAG, "tudum failed: " + url, e);
         }
         return out;
+    }
+
+    /** Strips the ": Season 1" / ": Limited Series" tail Tudum appends, and rejects heading rows. */
+    private static String cleanTitle(String raw) {
+        String t = raw == null ? "" : raw.trim();
+        t = t.replaceAll("\\s*:\\s*(Season|Limited Series|Volume|Part)\\b.*$", "").trim();
+        if (t.isEmpty() || NOT_A_TITLE.matcher(t).matches()) return "";
+        return t;
     }
 
     private static final Pattern TITLE = Pattern.compile("\"title\":\"([^\"]{2,70})\"");
@@ -215,7 +235,7 @@ final class Shelves {
                 if (poster.isEmpty() || title.isEmpty()) continue;
                 String date = o.optString("release_date", o.optString("first_air_date", ""));
                 out.add(new Item(out.size() + 1, title, TMDB_IMG + poster,
-                        date.length() >= 4 ? date.substring(0, 4) : ""));
+                        date.length() >= 4 ? date.substring(0, 4) : "", null));
             }
         } catch (Exception e) {
             Log.w(TAG, "tmdb trending failed", e);
@@ -265,7 +285,7 @@ final class Shelves {
         try {
             JSONObject root = new JSONObject();
             root.put("fetchedAt", System.currentTimeMillis());
-            root.put("version", 2);
+            root.put("version", 3);
             JSONArray arr = new JSONArray();
             for (Source src : catalog.values()) {
                 JSONObject so = new JSONObject();
@@ -278,6 +298,7 @@ final class Shelves {
                     io.put("title", i.title);
                     io.put("poster", i.posterUrl);
                     io.put("year", i.year);
+                    io.put("netflixId", i.netflixId);
                     items.put(io);
                 }
                 so.put("items", items);
@@ -310,7 +331,8 @@ final class Shelves {
                     for (int j = 0; j < items.length(); j++) {
                         JSONObject io = items.getJSONObject(j);
                         list.add(new Item(io.optInt("rank", j + 1), io.optString("title"),
-                                io.optString("poster"), io.optString("year")));
+                                io.optString("poster"), io.optString("year"),
+                                io.optString("netflixId", null)));
                     }
                 }
                 if (list.isEmpty()) continue;

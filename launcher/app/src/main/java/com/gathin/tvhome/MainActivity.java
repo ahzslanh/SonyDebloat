@@ -2149,11 +2149,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         rail.setLayoutManager(lm);
         rail.setItemAnimator(null);
         rail.setAdapter(new ShelfRailAdapter(slotIndex, source.items, posterCache, shelfListener));
-        rail.addOnScrollListener(new RecyclerView.OnScrollListener() {
-            @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
-                ensureFocusedVisible(rv, lm);
-            }
-        });
         // Fill the rail height so two shelves fit the page.
         ViewGroup.LayoutParams lp = rail.getLayoutParams();
         lp.height = Math.round(ShelfRailAdapter.railHeightDp() * getResources().getDisplayMetrics().density);
@@ -2188,7 +2183,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** Poster focus/click/swap from a shelf rail. */
     private final ShelfRailAdapter.Listener shelfListener = new ShelfRailAdapter.Listener() {
         @Override public void onPosterClicked(Shelves.Item item) {
-            openOnNetflix(item.title);
+            openOnNetflix(item);
         }
 
         @Override public void onPosterFocused(Shelves.Item item) {
@@ -2303,32 +2298,33 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     /**
-     * OK on a poster: open Netflix and put the title on the clipboard so it pastes straight into
-     * Netflix's search. Netflix has no public deep link for a title, so this is the honest version:
-     * it always works, and never pretends to land on a page it cannot reach.
+     * OK on a poster. Netflix shelves carry Netflix's own title id, so this opens the title page
+     * directly (the same /title/<id> link the Netflix app registers). TMDB shelves have no such id,
+     * so they open Netflix and put the title on the clipboard instead.
      */
-    private void openOnNetflix(String title) {
+    private void openOnNetflix(Shelves.Item item) {
+        if (item == null) return;
+        if (item.netflixId != null && !item.netflixId.isEmpty()) {
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.netflix.com/title/" + item.netflixId));
+                i.setPackage("com.netflix.ninja");
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+        // A TMDB shelf has no Netflix id and the title may not be on Netflix at all, so do not
+        // pretend to search Netflix: copy the title and say so plainly.
         try {
             android.content.ClipboardManager cm =
                     (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (cm != null) {
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("title", title));
-                Toast.makeText(this, "Netflix search: " + title, Toast.LENGTH_LONG).show();
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("title", item.title));
+                Toast.makeText(this, "Copied: " + item.title, Toast.LENGTH_SHORT).show();
             }
         } catch (Exception ignored) {
-        }
-        try {
-            startActivity(new Intent(Intent.ACTION_MAIN)
-                    .setPackage("com.netflix.ninja")
-                    .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
-        } catch (Exception e) {
-            try {
-                startActivity(new Intent(Intent.ACTION_MAIN).setPackage("com.netflix.ninja")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (Exception ignored) {
-            }
         }
     }
 
