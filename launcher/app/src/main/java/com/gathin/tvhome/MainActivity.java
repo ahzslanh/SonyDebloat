@@ -8,6 +8,8 @@ import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
+import android.app.ActivityManager;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
@@ -70,6 +72,7 @@ import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
@@ -93,6 +96,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     /** Sent by QuickSettingsActivity: open Launcher settings from here so Home rebuilds when they close. */
     static final String ACTION_LAUNCHER_SETTINGS = "com.gathin.tvhome.action.LAUNCHER_SETTINGS";
+    /** Debug/testing hook: opens the hold-OK menu for a tile without a remote long press. */
+    static final String ACTION_TILE_MENU = "com.gathin.tvhome.action.TILE_MENU";
     /** Tiles per row and dock slots (res/values/config.xml, columns). Set in onCreate. */
     static int COLUMNS = 4;
     private boolean rtlAppGrid;
@@ -114,6 +119,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private AppAdapter adapter;
     private RecyclerView grid;
+    /** Posters for the Top 10 shelves (disk + memory), created with the adapter. */
+    private PosterCache posterCache;
+    /** Top 10 shelf tiles, rebuilt when TMDB answers. */
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
     private GlassView glass;
@@ -415,7 +423,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         });
         ((GridLayoutManager) grid.getLayoutManager()).setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-            @Override public int getSpanSize(int position) { return adapter != null && adapter.isLibraryAt(position) ? COLUMNS : 1; }
+            @Override public int getSpanSize(int position) {
+                if (adapter == null) return 1;
+                if (adapter.isLibraryAt(position)) return COLUMNS;
+                return adapter.isShelfAt(position) ? COLUMNS : 1;
+            }
         });
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
@@ -439,6 +451,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     AnimationUtils.loadAnimation(this, enterAnim), enterDelay));
         }
         adapter = new AppAdapter(this, this, COLUMNS, cfg);
+        posterCache = new PosterCache(this);
+        loadShelves();
         dockApps = cfg.dockApps;
         fillDockLeavesSlots = !cfg.fillDock;
         adapter.setSavedOrder(Order.ranks(Order.load(Order.file(this)), dockApps));
@@ -597,7 +611,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private boolean openLauncherSettingsIfAsked(Intent intent) {
-        if (intent == null || !ACTION_LAUNCHER_SETTINGS.equals(intent.getAction())) return false;
+        if (intent == null) return false;
+        // "com.gathin.tvhome.action.TILE_MENU" (optional extra "pos") opens the hold-OK menu for a
+        // tile, so the layout can be checked over adb without a physical long press on the remote.
+        if (ACTION_TILE_MENU.equals(intent.getAction())) {
+            final int pos = intent.getIntExtra("pos", 0);
+            setIntent(new Intent(Intent.ACTION_MAIN));
+            grid.postDelayed(() -> {
+                AppAdapter.Entry e = adapter.entryAt(pos);
+                RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
+                if (e != null) onTileLongPress(pos, vh != null ? vh.itemView : grid, e);
+            }, 400);
+            return true;
+        }
+        if (!ACTION_LAUNCHER_SETTINGS.equals(intent.getAction())) return false;
         setIntent(new Intent(Intent.ACTION_MAIN));
         startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST);
         return true;
@@ -747,6 +774,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0);
         cards = moduleCards ? CardFeature.run(() -> Cards.discover(this, hiddenApps,
                 () -> Cards.load(Cards.storeFile(this)), leanback), none) : none;
+        adapter.setPosterCache(posterCache);
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none), leanback);
         lastFocusedKey = returnKey;
         lastFocused = returnSlot;
@@ -890,6 +918,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (handleSettingsKey(event)) return true;
+
+        // Hold OK / ENTER on a tile: the Android "hold the icon" menu. Done here rather than with
+        // setOnLongClickListener because TV remotes do not reliably deliver a long click.
+        if (!reordering && handleTileHold(event)) return true;
+
         if (!reordering) return super.dispatchKeyEvent(event);
         if (dockEditing) return dispatchDockEdit(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
@@ -1808,6 +1841,138 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         focusTile(Math.min(lastRow + lastFocused % COLUMNS, adapter.appCount() - 1));
     }
 
+    /**
+     * Builds the three shelves under the dock from the cached list, refreshing them in the
+     * background when the cache is stale. A cached copy is drawn immediately, so Home never waits
+     * on the network and the shelves are the same on every start until they age out.
+     */
+    private void loadShelves() {
+        Shelves.get(this, BuildConfig.TMDB_API_KEY, (shelves, cached) -> {
+            if (isFinishing()) return;
+            View block = findViewById(R.id.shelfBlock);
+            if (!(block instanceof LinearLayout)) return;
+            LinearLayout container = (LinearLayout) block;
+            container.removeAllViews();
+            for (Shelves.Shelf shelf : shelves) {
+                container.addView(buildShelfRow(container, shelf));
+            }
+            container.setVisibility(container.getChildCount() > 0 ? View.VISIBLE : View.GONE);
+        });
+    }
+
+    /** One shelf: a heading and a horizontal rail of vertical posters. */
+    private View buildShelfRow(LinearLayout parent, Shelves.Shelf shelf) {
+        View row = getLayoutInflater().inflate(R.layout.row_shelf, parent, false);
+        ((TextView) row.findViewById(R.id.shelfTitle)).setText(shelf.title);
+
+        RecyclerView rail = row.findViewById(R.id.shelfRail);
+        LinearLayoutManager lm = new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false);
+        rail.setLayoutManager(lm);
+        rail.setItemAnimator(null);
+        rail.setAdapter(new ShelfRailAdapter(shelf.items, posterCache, shelfListener));
+
+        // Keep the focused poster comfortably on screen while the rail slides.
+        rail.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                ensureFocusedVisible(rv, lm);
+            }
+        });
+
+        // Up from the rail reaches the dock; Down from the dock enters the first rail.
+        row.setFocusable(false);
+        return row;
+    }
+
+    /** Slides the rail so the focused poster keeps a margin from the edges, like the stock shelves. */
+    private void ensureFocusedVisible(RecyclerView rv, LinearLayoutManager lm) {
+        View focused = rv.findFocus();
+        if (focused == null) return;
+        int pos = lm.getPosition(focused);
+        if (pos == RecyclerView.NO_POSITION) return;
+        int margin = (int) (120 * density);
+        int left = focused.getLeft() - rv.getPaddingLeft();
+        int right = focused.getRight() - (rv.getWidth() - rv.getPaddingRight());
+        if (left < margin) rv.smoothScrollBy(left - margin, 0);
+        else if (right > -margin) rv.smoothScrollBy(right + margin, 0);
+    }
+
+    /** Poster focus/click from a shelf rail. */
+    private final ShelfRailAdapter.Listener shelfListener = new ShelfRailAdapter.Listener() {
+        @Override public void onPosterClicked(Shelves.Item item) {
+            openOnNetflix(item.title);
+        }
+
+        @Override public void onPosterFocused(Shelves.Item item) {
+            // The backdrop follows the focused poster's artwork, like the dock tiles do.
+            showPosterBackdrop(item);
+        }
+    };
+
+    /** Fades the focused poster's artwork into the backdrop. */
+    private void showPosterBackdrop(Shelves.Item item) {
+        if (item == null || item.posterUrl == null || heroArt == null) return;
+        String key = "poster:" + item.posterUrl;
+        if (key.equals(heroArtKey)) return;
+        Bitmap art = heroArtCache.get(key);
+        if (art == null) {
+            Bitmap raw = posterCache.get(item.posterUrl, 240, 360);
+            if (raw == null) return;                 // not downloaded yet; the next focus will catch it
+            art = HeroArt.from(new android.graphics.drawable.BitmapDrawable(getResources(), raw));
+            if (art != null) heroArtCache.put(key, art);
+        }
+        heroArtKey = key;
+        if (art == null) return;
+        heroArt.setImageBitmap(art);
+        heroArt.animate().alpha(HERO_ART_ALPHA).setDuration(420).start();
+    }
+
+    /** The launcher's motion setting, read by the poster tiles for their focus scale. */
+    @Override public boolean focusAnimations() {
+        return animations;
+    }
+    /** A poster tile was activated: open the focused title on Netflix. */
+    @Override public void onTileClicked(int position) {
+        AppAdapter.Entry e = adapter.entryAt(position);
+        if (e == null) return;
+        if (e.kind == AppAdapter.Entry.POSTER) {
+            openOnNetflix(e.label);
+            return;
+        }
+        if (e.component != null && e.kind != AppAdapter.Entry.EMPTY) {
+            try {
+                Intent i = new Intent(Intent.ACTION_MAIN).setComponent(e.component)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                if (adapter.isLeanback(e.pkg)) i.addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
+                startActivity(i);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** Hand a poster title to Netflix's search, so OK on a poster lands on that show. */
+    private void openOnNetflix(String title) {
+        Intent netflix = new Intent(Intent.ACTION_MAIN)
+                .setPackage("com.netflix.ninja")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            // Netflix accepts a query string on its search action.
+            netflix.setAction(Intent.ACTION_SEARCH);
+            netflix.putExtra("query", title);
+            if (getPackageManager().resolveActivity(netflix, 0) != null) {
+                startActivity(netflix);
+                return;
+            }
+        } catch (Exception ignored) {
+        }
+        // Fall back to just opening Netflix.
+        try {
+            startActivity(new Intent(Intent.ACTION_MAIN).setPackage("com.netflix.ninja")
+                    .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception ignored) {
+        }
+    }
+
     private void focusLibrary() {
         cancelPendingFocusScroll();
         int position = adapter.appCount();
@@ -2478,8 +2643,183 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         rows.getChildAt(0).requestFocus();
     }
 
-    private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, int title, Runnable action) {
+    /** Which tile key is being held down on OK/ENTER, and when the press started. */
+    private String holdKey;
+    private long holdDownAt;
+    private boolean holdFired;
+    private static final long HOLD_MS = 600;
+
+    /**
+     * Detects a held OK/ENTER on the focused tile and opens the hold menu. Returns true when the
+     * event was consumed (the menu opened, or the key-up after it), so the tile is not also opened.
+     */
+    private boolean handleTileHold(KeyEvent event) {
+        int code = event.getKeyCode();
+        boolean okKey = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+                || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (!okKey) return false;
+
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) {
+                View focus = getCurrentFocus();
+                int pos = tilePositionOf(focus);
+                if (pos < 0 || pos >= adapter.appCount()) {
+                    holdKey = null;
+                    return false;
+                }
+                holdKey = adapter.keyAt(pos);
+                holdDownAt = System.currentTimeMillis();
+                holdFired = false;
+                return false;   // let it through so a short press still opens the app
+            }
+            // Some remotes repeat, some only send one long down: fire as soon as either indicates a hold.
+            if (holdKey != null && !holdFired
+                    && System.currentTimeMillis() - holdDownAt >= HOLD_MS) {
+                fireHold();
+                return true;
+            }
+            return false;
+        }
+
+        // ACTION_UP is the reliable signal: a press that lasted longer than the threshold is a hold,
+        // whichever way the remote reported the repeats.
+        if (holdKey != null && !holdFired
+                && System.currentTimeMillis() - holdDownAt >= HOLD_MS) {
+            fireHold();
+            return true;        // swallow the release so the tile does not open
+        }
+        if (holdFired) {
+            holdFired = false;
+            holdKey = null;
+            return true;
+        }
+        holdKey = null;
+        return false;
+    }
+
+    /** Opens the hold menu for the tile recorded when the key went down. */
+    private void fireHold() {
+        holdFired = true;
+        int pos = adapter.positionOf(holdKey);
+        AppAdapter.Entry entry = pos >= 0 ? adapter.entryAt(pos) : null;
+        RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
+        View card = vh != null ? vh.itemView : null;
+        holdKey = null;
+        if (entry != null) onTileLongPress(pos, card, entry);
+    }
+
+    /** Adapter position of the tile that owns this view, or -1. */
+    private int tilePositionOf(View view) {
+        if (view == null) return -1;
+        RecyclerView.ViewHolder vh = grid.findContainingViewHolder(view);
+        if (vh != null) {
+            int pos = vh.getBindingAdapterPosition();
+            if (pos != RecyclerView.NO_POSITION) return pos;
+        }
+        // The focused view is often the grid itself, or a child of the tile: fall back to the tile the
+        // user last focused, which on this screen is always the one they are pointing at.
+        return lastFocused >= 0 && lastFocused < adapter.appCount() ? lastFocused : -1;
+    }
+
+    /**
+     * Hold OK on a tile: the Android "hold the icon" menu. App info, move the tile one place left or
+     * right (saved to the same order.txt the reorder button uses), and quit the app.
+     */
+    @Override
+    public boolean onTileLongPress(int position, View card, AppAdapter.Entry entry) {
+        if (entry == null || entry.kind != AppAdapter.Entry.APP || entry.pkg == null) return false;
+
+        // Frost the home screen behind the menu: copy, blur, dim. Released when the menu closes.
+        final BlurScrim scrim = new BlurScrim(this);
+        BlurScrim.attach(root, scrim, root.getChildCount());
+        scrim.captureAndShow(getWindow(), root);
+
+        View panel = getLayoutInflater().inflate(R.layout.popup_tile_menu, root, false);
+        LinearLayout rows = panel.findViewById(R.id.rows);
+        ((TextView) panel.findViewById(R.id.menuTitle)).setText(
+                entry.name != null ? entry.name : entry.pkg);
+
+        final PopupWindow popup = glassPopup(panel, (int) (250 * density));
+        popup.setOnDismissListener(() -> {
+            if (openPopup == popup) openPopup = null;
+            scrim.release();
+            root.removeView(scrim);
+        });
+
+        addIconMenuRow(rows, popup, R.drawable.ic_info, "App info", () -> openAppInfo(entry.pkg));
+
+        int movable = adapter.movableCount();
+        if (position > 0) {
+            addIconMenuRow(rows, popup, R.drawable.ic_move_left, "Move left",
+                    () -> moveTileAndSave(position, position - 1));
+        }
+        if (position < movable - 1) {
+            addIconMenuRow(rows, popup, R.drawable.ic_move_right, "Move right",
+                    () -> moveTileAndSave(position, position + 1));
+        }
+        addIconMenuRow(rows, popup, R.drawable.ic_quit, "Quit app", () -> quitApp(entry.pkg));
+
+        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        popup.setWidth(Math.max((int) (250 * density), panel.getMeasuredWidth()));
+        // Right side of the screen, vertically centred, under the wallpaper but over the scrim.
+        popup.showAtLocation(root, Gravity.END | Gravity.CENTER_VERTICAL,
+                (int) (28 * density), 0);
+        rows.getChildAt(0).requestFocus();
+        return true;
+    }
+
+    /** An icon + label row in the hold-OK menu. */
+    private void addIconMenuRow(LinearLayout rows, PopupWindow popup, int iconRes,
+                                String title, Runnable action) {
         View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
+        ((ImageView) row.findViewById(R.id.icon)).setImageResource(iconRes);
+        row.findViewById(R.id.icon).setVisibility(View.VISIBLE);
+        row.findViewById(R.id.dot).setVisibility(View.GONE);
+        row.findViewById(R.id.status).setVisibility(View.GONE);
+        ((TextView) row.findViewById(R.id.title)).setText(title);
+        row.setOnClickListener(v -> {
+            popup.dismiss();
+            action.run();
+        });
+        rows.addView(row);
+    }
+    /** Opens the system App info page for a package. */
+    private void openAppInfo(String pkg) {
+        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (ActivityNotFoundException ignored) {
+        }
+    }
+
+    /** Moves a tile one place and persists it, so the change survives a reboot like reorder mode does. */
+    private void moveTileAndSave(final int from, final int to) {
+        if (from == to || from < 0 || to < 0
+                || from >= adapter.movableCount() || to >= adapter.movableCount()) return;
+        adapter.move(from, to);
+        refocusAfterLayout(to);
+        List<String> keys = adapter.movableKeys();
+        Order order = new Order(Order.dockKey(dockApps), keys);
+        if (Order.save(Order.file(this), order)) {
+            adapter.setSavedOrder(Order.ranks(order, dockApps));
+        } else {
+            Toast.makeText(this, R.string.reorder_not_saved, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Force-stops the app's process, the TV equivalent of "quit app". */
+    private void quitApp(String pkg) {
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            if (am != null) am.killBackgroundProcesses(pkg);
+            Runtime.getRuntime().exec(new String[]{"am", "force-stop", pkg}).waitFor();
+        } catch (Exception ignored) {
+        }
+    }
+
+
+    private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, int title, Runnable action) {        View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
         row.findViewById(R.id.icon).setVisibility(View.GONE);
         row.findViewById(R.id.dot).setVisibility(View.GONE);
         row.findViewById(R.id.status).setVisibility(View.GONE);

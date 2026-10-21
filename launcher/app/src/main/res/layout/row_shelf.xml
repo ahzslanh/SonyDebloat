@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One Top 10 shelf: a heading and a horizontal rail of vertical 2:3 posters.
+     The rail slides as focus moves (RIGHT past the last visible poster brings the next ones in),
+     the way the Netflix / Google TV shelves on the stock home behave. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <TextView
+        android:id="@+id/shelfTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="60dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp"
+        android:textColor="#F2FFFFFF"
+        android:textSize="14sp"
+        android:fontFamily="@font/outfit_medium"
+        android:letterSpacing="0.01" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/shelfRail"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:clipToPadding="false"
+        android:clipChildren="false"
+        android:paddingStart="60dp"
+        android:paddingEnd="60dp"
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        android:focusable="false"
+        android:descendantFocusability="afterDescendants" />
+</LinearLayout>

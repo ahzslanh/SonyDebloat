@@ -30,6 +30,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
@@ -54,13 +55,22 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         /** Called for a D-pad direction key on a tile. Return true when handled (focus stays put). */
         boolean onTileVerticalKey(int position, int keyCode);
 
+        /** Hold OK on a tile: the Android "long-press the icon" menu. Return true when handled. */
+        boolean onTileLongPress(int position, View card, Entry entry);
+
+        /** Whether tiles should animate their focus scale (the launcher's motion setting). */
+        boolean focusAnimations();
+
+        /** A poster tile was activated: open that title. */
+        void onTileClicked(int position);
+
         void onLibraryRequested();
         void onLibraryFocused();
         void onLibraryUp();
     }
 
     static final class Entry {
-        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3;
+        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3, POSTER = 4, SHELF = 5;
 
         final int kind;
         final String label;
@@ -72,12 +82,23 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         final String name;
         /** Ambient glow colour; 0 until sampled from the banner, or the card's accent from the start. */
         int ambient;
+        /** Remote poster for a POSTER tile (Top 10 shelves), decoded by PosterCache. */
+        final String posterUrl;
+        /** Rank shown in the poster's badge (1-10), or 0. */
+        final int rank;
+        /** Which shelf a SHELF row shows. */
+        int shelfIndex = -1;
 
         Entry(String label, ComponentName component, Drawable banner, Drawable icon) {
-            this(APP, label, component, banner, icon, null, 0);
+            this(APP, label, component, banner, icon, null, 0, null, 0);
         }
 
         Entry(int kind, String label, ComponentName component, Drawable banner, Drawable icon, String caption, int accent) {
+            this(kind, label, component, banner, icon, caption, accent, null, 0);
+        }
+
+        Entry(int kind, String label, ComponentName component, Drawable banner, Drawable icon,
+              String caption, int accent, String posterUrl, int rank) {
             this.kind = kind;
             this.label = label;
             this.component = component;
@@ -86,6 +107,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             this.icon = icon;
             this.name = caption == null ? label : label + " \u00B7 " + caption;
             this.ambient = accent;
+            this.posterUrl = posterUrl;
+            this.rank = rank;
         }
     }
 
@@ -171,6 +194,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     /** Reorder mode: no empty dock slots, so every position holds a tile that can move. */
     private boolean reordering;
     private final TileListener listener;
+    /** Poster cache for the Top 10 shelves; null until the launcher hands one over. */
+    private PosterCache posters;
+    /** Top 10 shelves, each its own full-width row with a horizontal poster rail. */
+    private final List<Shelf> shelves = new ArrayList<>();
+
+    /** A labelled poster rail. */
+    static final class Shelf {
+        final String title;
+        final List<Entry> items;
+        Shelf(String title, List<Entry> items) { this.title = title; this.items = items; }
+    }
     private final int dockSize;
     /** config dock_row: false makes the dock apps the first tiles of one plain grid (names shown, no empty slots). */
     private final boolean dockRow;
@@ -306,6 +340,18 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             fresh.add(docked + i, new Entry(Entry.EMPTY, "", new ComponentName(ctx, "empty-dock-slot-" + i),
                     null, null, null, 0));
         }
+        // A shelf is a full-width row of its own, placed right under the dock.
+        if (!shelves.isEmpty()) {
+            List<Entry> withShelves = new ArrayList<>(fresh);
+            int at = Math.min(docked + emptySlots, withShelves.size());
+            for (int i = 0; i < shelves.size(); i++) {
+                Entry row = new Entry(Entry.SHELF, shelves.get(i).title,
+                        new ComponentName(ctx, "shelf-" + i), null, null, null, 0);
+                row.shelfIndex = i;
+                withShelves.add(at + i, row);
+            }
+            fresh = withShelves;
+        }
         items.clear();
         items.addAll(fresh);
         notifyDataSetChanged();
@@ -366,6 +412,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             });
             return new RecyclerView.ViewHolder(row) { };
         }
+        if (viewType == 3) {
+            View row = LayoutInflater.from(ctx).inflate(R.layout.row_shelf, parent, false);
+            return new ShelfHolder(row, listener, posters);
+        }
         View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_app, parent, false);
         float density = parent.getResources().getDisplayMetrics().density;
         int width = parent.getWidth() > 0 ? parent.getWidth() : parent.getMeasuredWidth();
@@ -393,8 +443,18 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         if (isLibraryAt(position)) return;
+        Entry entry = items.get(position);
+        if (holder instanceof ShelfHolder) {
+            ShelfHolder sh = (ShelfHolder) holder;
+            sh.bind(shelfAt(entry.shelfIndex), posterCacheDensity());
+            return;
+        }
+        if (holder instanceof PosterHolder) {
+            bindPoster((PosterHolder) holder, position, entry);
+            return;
+        }
         Holder h = (Holder) holder;
-        Entry e = items.get(position);
+        Entry e = entry;
         if (e.kind == Entry.EMPTY) {
             // A free dock slot keeps its place in the row and the band, but shows nothing and takes no focus.
             h.card.setVisibility(View.INVISIBLE);
@@ -437,13 +497,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
         h.card.setOnClickListener(v -> launch(e));
         h.card.setOnLongClickListener(v -> {
-            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                ctx.startActivity(i);
-            } catch (ActivityNotFoundException ignored) {
-            }
-            return true;
+            int pos = h.getBindingAdapterPosition();
+            if (pos == RecyclerView.NO_POSITION) return true;
+            // The launcher decides: a menu with App info, move left/right and quit, or its own fallback.
+            return listener.onTileLongPress(pos, h.card, e) || true;
         });
     }
 
@@ -484,9 +541,24 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     int appCount() { return items.size(); }
 
+    /** The entry at a position, or null. */
+    Entry entryAt(int position) {
+        return position >= 0 && position < items.size() ? items.get(position) : null;
+    }
+
     boolean isLibraryAt(int position) { return showLibrary && position == items.size(); }
 
-    @Override public int getItemViewType(int position) { return isLibraryAt(position) ? 1 : 0; }
+    /** A shelf row (full width, holds its own rail). */
+    boolean isShelfAt(int position) {
+        return position >= 0 && position < items.size() && items.get(position).kind == Entry.SHELF;
+    }
+
+    @Override public int getItemViewType(int position) {
+        if (isLibraryAt(position)) return 1;
+        Entry e = items.get(position);
+        if (e.kind == Entry.SHELF) return 3;
+        return e.kind == Entry.POSTER ? 2 : 0;
+    }
 
     boolean containsPackage(String pkg) {
         for (Entry entry : items) if (entry.pkg.equals(pkg)) return true;
@@ -496,6 +568,30 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public long getItemId(int position) {
         return isLibraryAt(position) ? Long.MIN_VALUE : items.get(position).component.flattenToShortString().hashCode();
+    }
+
+    /** Whether this package ships a leanback entry point (so it launches with the TV category). */
+    boolean isLeanback(String pkg) {
+        return leanbackPackages.contains(pkg);
+    }
+
+    /** Poster cache for the Top 10 shelves. */
+    void setPosterCache(PosterCache cache) {
+        this.posters = cache;
+    }
+
+    /** Replaces the Top 10 shelves. Takes effect at the next reload(). */
+    void setShelves(List<Shelf> next) {
+        shelves.clear();
+        if (next != null) shelves.addAll(next);
+    }
+
+    boolean hasShelves() {
+        return !shelves.isEmpty();
+    }
+
+    Shelf shelfAt(int index) {
+        return index >= 0 && index < shelves.size() ? shelves.get(index) : null;
     }
 
     /** Uses this saved order from the next reload() (Order.ranks). */
@@ -546,8 +642,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     /** Position of the app with this key, or -1 when it is gone. */
-    int positionOf(String key) {
-        if (key == null) return -1;
+    int positionOf(String key) {        if (key == null) return -1;
         for (int i = 0; i < items.size(); i++) {
             if (items.get(i).component.flattenToShortString().equals(key)) return i;
         }
@@ -641,8 +736,162 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         return 16f * density * Math.min(1f, tileWidthPx / (DESIGN_W_DP * density));
     }
 
-    static final class Holder extends RecyclerView.ViewHolder {
+    private float posterCacheDensity() {
+        return ctx.getResources().getDisplayMetrics().density;
+    }
+
+    /** A Top 10 shelf row: a heading and a horizontal rail of poster tiles. */
+    static final class ShelfHolder extends RecyclerView.ViewHolder {
+        final TextView title;
+        final RecyclerView rail;
+        final PosterCache cache;
+        final TileListener listener;
+
+        ShelfHolder(View v, TileListener listener, PosterCache cache) {
+            super(v);
+            this.listener = listener;
+            this.cache = cache;
+            title = v.findViewById(R.id.shelfTitle);
+            rail = v.findViewById(R.id.shelfRail);
+            rail.setLayoutManager(new LinearLayoutManager(v.getContext(),
+                    RecyclerView.HORIZONTAL, false));
+            rail.setItemAnimator(null);
+            rail.setHasFixedSize(false);
+        }
+
+        void bind(Shelf shelf, float density) {
+            if (shelf == null) { rail.setAdapter(null); return; }
+            title.setText(shelf.title);
+            int w = AppAdapter.tileWidthPx(
+                    rail.getResources().getDisplayMetrics().widthPixels
+                            - rail.getPaddingLeft() - rail.getPaddingRight(),
+                    SHELF_COLUMNS, density);
+            rail.setAdapter(new RailAdapter(shelf.items, cache, listener, w));
+        }
+    }
+
+    /** The poster rail inside one shelf. */
+    static final class RailAdapter extends RecyclerView.Adapter<PosterHolder> {
+        private final List<Entry> items;
+        private final PosterCache cache;
+        private final TileListener listener;
+        private final int tileW;
+
+        RailAdapter(List<Entry> items, PosterCache cache, TileListener listener, int tileW) {
+            this.items = items;
+            this.cache = cache;
+            this.listener = listener;
+            this.tileW = tileW;
+        }
+
+        @NonNull @Override
+        public PosterHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_poster, parent, false);
+            float density = parent.getResources().getDisplayMetrics().density;
+            int h = Math.round(tileW * 3f / 2f);
+            View card = v.findViewById(R.id.card);
+            ViewGroup.LayoutParams lp = card.getLayoutParams();
+            lp.width = tileW;
+            lp.height = h;
+            card.setLayoutParams(lp);
+            View name = v.findViewById(R.id.name);
+            ViewGroup.MarginLayoutParams nlp = (ViewGroup.MarginLayoutParams) name.getLayoutParams();
+            nlp.width = tileW;
+            nlp.topMargin = h + Math.round(6 * density);
+            name.setLayoutParams(nlp);
+            return new PosterHolder(v, listener);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull PosterHolder h, int position) {
+            Entry e = items.get(position);
+            h.name.setText(e.name);
+            h.rank.setText(e.rank > 0 ? "#" + e.rank : "");
+            h.rank.setVisibility(e.rank > 0 ? View.VISIBLE : View.GONE);
+
+            final ImageView target = h.banner;
+            final String url = e.posterUrl;
+            target.setTag(url);
+            target.setImageDrawable(null);
+            if (cache == null || url == null) return;
+            Runnable load = () -> {
+                if (!url.equals(target.getTag())) return;
+                int w = target.getWidth(), hh = target.getHeight();
+                if (w <= 0 || hh <= 0) return;
+                android.graphics.Bitmap bmp = cache.get(url, w, hh);
+                if (bmp != null && url.equals(target.getTag())) target.setImageBitmap(bmp);
+            };
+            if (target.getWidth() > 0) load.run(); else target.post(load);
+            if (position + 1 < items.size()) cache.prefetch(items.get(position + 1).posterUrl);
+        }
+
+        @Override public int getItemCount() { return items.size(); }
+    }
+
+    /** How many posters fit across one shelf before the rail scrolls. */
+    static final int SHELF_COLUMNS = 6;
+
+    /** A poster tile in a Top 10 shelf. */
+    static final class PosterHolder extends RecyclerView.ViewHolder {
         final View card;
+        final ImageView banner;
+        final TextView rank;
+        final TextView name;
+
+        PosterHolder(View v, TileListener listener) {
+            super(v);
+            card = v.findViewById(R.id.card);
+            banner = v.findViewById(R.id.banner);
+            rank = v.findViewById(R.id.rank);
+            name = v.findViewById(R.id.name);
+
+            final float density = v.getResources().getDisplayMetrics().density;
+            card.setOnFocusChangeListener((view, focused) -> {
+                if (!listener.focusAnimations()) return;
+                view.animate().scaleX(focused ? FOCUS_SCALE : 1f)
+                        .scaleY(focused ? FOCUS_SCALE : 1f).setDuration(140).start();
+                name.setAlpha(focused ? 1f : 0f);
+                name.setTranslationY(focused ? 0f : -6f * density);
+            });
+            card.setOnClickListener(view -> listener.onTileClicked(getBindingAdapterPosition()));
+        }
+    }
+
+    private void bindPoster(PosterHolder h, int position, Entry e) {
+        h.name.setText(e.name);
+        h.rank.setText(e.rank > 0 ? "#" + e.rank : "");
+        h.rank.setVisibility(e.rank > 0 ? View.VISIBLE : View.GONE);
+        boolean focused = h.card.isFocused();
+        h.card.setScaleX(focused ? FOCUS_SCALE : 1f);
+        h.card.setScaleY(focused ? FOCUS_SCALE : 1f);
+        h.name.setAlpha(focused ? 1f : 0f);
+
+        // Decode against the measured tile, from the cache, and never for a tile that is not laid out.
+        h.banner.setTag(e.posterUrl);
+        final ImageView target = h.banner;
+        final String url = e.posterUrl;
+        if (posters == null || url == null) {
+            h.banner.setImageDrawable(null);
+            return;
+        }
+        Runnable load = () -> {
+            if (!url.equals(target.getTag())) return;
+            int w = target.getWidth(), hgt = target.getHeight();
+            if (w <= 0 || hgt <= 0) return;
+            android.graphics.Bitmap bmp = posters.get(url, w, hgt);
+            if (bmp != null && url.equals(target.getTag())) target.setImageBitmap(bmp);
+        };
+        if (h.banner.getWidth() > 0) load.run();
+        else { h.banner.setImageDrawable(null); h.banner.post(load); }
+
+        // Prefetch the neighbours so sliding through the shelf stays instant.
+        if (posters != null && position + 1 < items.size()) {
+            Entry next = items.get(position + 1);
+            if (next.kind == Entry.POSTER) posters.prefetch(next.posterUrl);
+        }
+    }
+
+    static final class Holder extends RecyclerView.ViewHolder {        final View card;
         /** item_app.xml's tile_bg: the dark card behind an icon tile, or behind a banner that has transparent parts. */
         final Drawable cardBackground;
         final ImageView banner;

@@ -351,6 +351,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:minHeight="260dp"
             android:layout_marginTop="10dp">
 
             <androidx.recyclerview.widget.RecyclerView
@@ -365,6 +366,18 @@
                 android:scrollbars="none"
                 android:descendantFocusability="afterDescendants" />
         </FrameLayout>
+
+        <!-- Shelves: horizontal rails of vertical posters, filled at runtime and kept at the bottom. -->
+        <LinearLayout
+            android:id="@+id/shelfBlock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxHeight="330dp"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:baselineAligned="false"
+            android:clipChildren="false"
+            android:clipToPadding="false" />
     </LinearLayout>
 
     <!-- The single floating glass highlight that springs between tiles. -->

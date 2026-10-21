@@ -13,6 +13,13 @@ android {
         targetSdk 34
         versionCode 6
         versionName '2.5'
+        // TMDB API key for the Top 10 shelves, from gradle.properties so it stays out of the source.
+        buildConfigField 'String', 'TMDB_API_KEY',
+                '"' + providers.gradleProperty('tmdb.apiKey').getOrElse('') + '"'
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {

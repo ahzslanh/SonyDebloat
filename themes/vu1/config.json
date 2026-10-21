@@ -1,0 +1,24 @@
+{
+  "dock_apps": [
+    "com.netflix.ninja",
+    "org.videolan.vlc",
+    "com.google.android.youtube.tv"
+  ],
+  "fill_dock": false,
+  "hidden_apps": [
+    "com.gathin.tvhome",
+    "com.sony.dtv.smarthelp",
+    "com.android.tv.settings",
+    "com.realtek.tvmediaplay",
+    "com.sony.dtv.timers",
+    "com.realtek.tv.atv",
+    "com.google.android.youtube.tvmusic",
+    "com.sony.dtv.remotecontrolsettings"
+  ],
+  "columns": 5,
+  "rows_below_dock": 0,
+  "reduced_motion": false,
+  "reorder_button": true,
+  "background_color": "#05060A",
+  "wallpaper": true
+}
