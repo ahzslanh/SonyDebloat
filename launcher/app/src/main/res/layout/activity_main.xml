@@ -402,8 +402,8 @@
                 android:orientation="vertical"
                 android:visibility="gone"
                 android:baselineAligned="false"
-                android:clipChildren="false"
-                android:clipToPadding="false" />
+                android:clipChildren="true"
+                android:clipToPadding="true" />
         </FrameLayout>
     </LinearLayout>
 

@@ -2000,35 +2000,75 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Ask TMDB's CDN for a bigger copy than the 342px tile thumbnail: a full-screen poster
             // needs the detail, and the path is the only thing that changes.
             String big = pick.posterUrl.replace("/w342/", "/w780/");
-            int w = getResources().getDisplayMetrics().widthPixels;
-            int h = getResources().getDisplayMetrics().heightPixels;
-            android.graphics.Bitmap bmp = posterCache.getWallpaper(big, w, h);
-            if (bmp == null) {
+            int sw = getResources().getDisplayMetrics().widthPixels;
+            int sh = getResources().getDisplayMetrics().heightPixels;
+            // Decode at a third of the screen and blur there: cheap, and the ImageView's filtering
+            // smooths the upscale, so the poster reads as glass behind the UI but stays recognisable.
+            android.graphics.Bitmap raw = posterCache.getWallpaper(big, Math.max(1, sw / 2), Math.max(1, sh / 2));
+            if (raw == null) {
                 // Not on disk yet: warm it and retry soon, not in two minutes.
                 posterCache.prefetch(big);
                 wallpaperHandler.postDelayed(posterWallpaperTick, 1200);
                 return;
             }
+            // Pull the poster back ~20% (so less of it is cropped by a 16:9 screen), fill the edges
+            // with a darkened copy of itself, then soften the whole thing for the glass look.
+            android.graphics.Bitmap framed = framePoster(raw, Math.max(1, sw / 2), Math.max(1, sh / 2), 0.8f);
+            android.graphics.Bitmap bmp = framed == null ? null
+                    : GlassBlur.mild(framed, framed.getWidth(), framed.getHeight(), 3, 2);
+            if (framed != null && bmp != null) framed.recycle();
+            if (bmp == null) bmp = raw; else raw.recycle();
             if (posterWallpaper != null) {
                 final android.graphics.Bitmap previous = wallpaperBitmap;
-                wallpaperBitmap = bmp;
+                final android.graphics.Bitmap next = bmp;
+                wallpaperBitmap = next;
                 posterWallpaperCurrent = pick.posterUrl;
                 posterWallpaper.setVisibility(View.VISIBLE);
-                posterWallpaper.setImageBitmap(bmp);
+                posterWallpaper.setImageBitmap(next);
                 if (posterScrim != null) {
                     posterScrim.setVisibility(View.VISIBLE);
                     posterScrim.animate().alpha(1f).setDuration(650).start();
                 }
-                posterWallpaper.animate().alpha(1f).setDuration(650)
+                posterWallpaper.animate().alpha(0.92f).setDuration(650)
                         .withEndAction(() -> {
-                            // Drop the old full-size bitmap once it is off screen.
-                            if (previous != null && previous != bmp && !previous.isRecycled()) {
+                            // Drop the old bitmap once it is off screen.
+                            if (previous != null && previous != next && !previous.isRecycled()) {
                                 previous.recycle();
                             }
                         }).start();
             }
         }
         wallpaperHandler.postDelayed(posterWallpaperTick, POSTER_WALLPAPER_MS);
+    }
+
+    /**
+     * Lays a 2:3 poster onto a screen-shaped canvas at {@code scale} of the usual cover size, so it
+     * looks pulled back instead of cropped into a face. The uncovered edges are filled with a dimmed
+     * copy of the same artwork, which keeps it full-bleed.
+     */
+    private android.graphics.Bitmap framePoster(android.graphics.Bitmap src, int outW, int outH, float scale) {
+        if (src == null || outW <= 0 || outH <= 0) return null;
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(
+                outW, outH, android.graphics.Bitmap.Config.RGB_565);
+        android.graphics.Canvas c = new android.graphics.Canvas(out);
+        c.drawColor(android.graphics.Color.BLACK);
+
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+        // Cover rect (the old centre-crop), used for the dimmed edge fill.
+        float cover = Math.max((float) outW / src.getWidth(), (float) outH / src.getHeight());
+        float cw = src.getWidth() * cover, ch = src.getHeight() * cover;
+        android.graphics.RectF coverRect = new android.graphics.RectF(
+                (outW - cw) / 2f, (outH - ch) / 2f, (outW + cw) / 2f, (outH + ch) / 2f);
+        paint.setAlpha(90);
+        c.drawBitmap(src, null, coverRect, paint);
+
+        // The poster itself, pulled back around the centre.
+        paint.setAlpha(255);
+        float cx = coverRect.centerX(), cy = coverRect.centerY();
+        float hw = coverRect.width() * scale / 2f, hh = coverRect.height() * scale / 2f;
+        android.graphics.RectF fg = new android.graphics.RectF(cx - hw, cy - hh, cx + hw, cy + hh);
+        c.drawBitmap(src, null, fg, paint);
+        return out;
     }
 
     /** A random poster from the two shelves on screen, never the one already showing. */
