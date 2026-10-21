@@ -160,6 +160,20 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         return items.size();
     }
 
+    /**
+     * A poster finished downloading: rebind any visible tile showing that URL so its artwork appears.
+     * Called on the main thread; only the bound holders are touched, so this stays cheap.
+     */
+    void posterReady(String url, RecyclerView rail) {
+        if (url == null) return;
+        for (int i = 0; i < rail.getChildCount(); i++) {
+            View child = rail.getChildAt(i);
+            int pos = rail.getChildAdapterPosition(child);
+            if (pos == RecyclerView.NO_POSITION || pos >= items.size()) continue;
+            if (url.equals(items.get(pos).posterUrl)) notifyItemChanged(pos);
+        }
+    }
+
     /** Motion preference, supplied by the caller; kept simple here (always on). */
     private boolean listenerFocusAnimations() {
         return true;

@@ -82,15 +82,34 @@ final class PosterCache {
         return url != null && memory.get(key(url)) != null;
     }
 
-    /** Kicks off a background fetch so a later {@link #get} finds the file ready. */
+    /**
+     * Fetches a poster in the background and decodes it into memory, so a later bind draws it with
+     * no work. The file is kept (unlike {@link #get}, which deletes after decoding) because this runs
+     * off the main thread and has no tile size yet; the decode below is at a generous size the tiles
+     * then reuse.
+     */
     void prefetch(final String url) {
         if (url == null) return;
         final String key = key(url);
         if (memory.get(key) != null) return;
-        final File file = file(key);
-        if (file.exists()) return;
-        new Thread(() -> download(url, file), "poster-fetch").start();
+        new Thread(() -> {
+            File f = file(key);
+            if (!f.exists()) download(url, f);
+            if (!f.exists()) return;
+            if (memory.get(key) != null) return;
+            Bitmap bmp = decode(f, PREFETCH_W, PREFETCH_H);
+            if (bmp != null) {
+                memory.put(key, bmp);
+                final OnReady r = onReady;
+                if (r != null) new android.os.Handler(android.os.Looper.getMainLooper())
+                        .post(() -> r.onReady(url));
+            }
+        }, "poster-prefetch").start();
     }
+
+    /** Size posters are decoded at when prefetching, big enough for any tile on a 1080p screen. */
+    private static final int PREFETCH_W = 220;
+    private static final int PREFETCH_H = 330;
 
     private void download(String url, File file) {
         HttpURLConnection c = null;

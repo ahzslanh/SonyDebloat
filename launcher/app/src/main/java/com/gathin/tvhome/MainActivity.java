@@ -453,8 +453,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter = new AppAdapter(this, this, COLUMNS, cfg);
         posterCache = new PosterCache(this);
         posterCache.setOnReady(url -> {
-            // A poster just arrived: rebind the shelf rows so the tile fills in.
-            if (adapter != null) adapter.notifyPosterReady(url);
+            // A poster just arrived: rebind the visible tile in every rail that is showing it.
+            for (View railView : shelfRailViews()) {
+                if (!(railView instanceof RecyclerView)) continue;
+                RecyclerView rv = (RecyclerView) railView;
+                if (rv.getAdapter() instanceof ShelfRailAdapter) {
+                    ((ShelfRailAdapter) rv.getAdapter()).posterReady(url, rv);
+                }
+            }
         });
         loadShelves();
         dockApps = cfg.dockApps;
@@ -1907,6 +1913,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             for (Shelves.Shelf s : shelves) rows.add(new AppAdapter.Shelf(s.title, s.items));
             adapter.setShelves(rows);
             reloadTiles();
+            // Warm the cache for every shelf poster so scrolling never shows a blank tile.
+            if (posterCache != null) {
+                for (Shelves.Shelf s2 : shelves) {
+                    for (Shelves.Item it : s2.items) posterCache.prefetch(it.posterUrl);
+                }
+            }
             // Re-run the dock clearance math now that shelf rows exist, so the dock lifts up and
             // the shelves get the room under it.
             grid.post(() -> grid.requestLayout());
