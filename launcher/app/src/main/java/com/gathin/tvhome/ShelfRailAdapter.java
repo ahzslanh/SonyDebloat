@@ -107,6 +107,17 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
             if (focused) listener.onPosterFocused(item);
         });
         h.card.setOnClickListener(v -> listener.onPosterClicked(item));
+        // On a TV the D-pad select can be consumed before the click listener runs; handle the key too.
+        h.card.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != android.view.KeyEvent.ACTION_UP) return false;
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                    || keyCode == android.view.KeyEvent.KEYCODE_ENTER
+                    || keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                listener.onPosterClicked(item);
+                return true;
+            }
+            return false;
+        });
 
         // Poster: measured-size decode, cache-first, skip if this holder was recycled onto another item.
         final ImageView target = h.poster;

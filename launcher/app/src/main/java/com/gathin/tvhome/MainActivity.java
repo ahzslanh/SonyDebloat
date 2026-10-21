@@ -1930,27 +1930,33 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
 
-    /** Hand a poster title to Netflix's search, so OK on a poster lands on that show. */
+    /**
+     * OK on a poster: open Netflix and put the title on the clipboard so it pastes straight into
+     * Netflix's search. Netflix has no public deep link for a title, so this is the honest version:
+     * it always works, and never pretends to land on a page it cannot reach.
+     */
     private void openOnNetflix(String title) {
-        Intent netflix = new Intent(Intent.ACTION_MAIN)
-                .setPackage("com.netflix.ninja")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            // Netflix accepts a query string on its search action.
-            netflix.setAction(Intent.ACTION_SEARCH);
-            netflix.putExtra("query", title);
-            if (getPackageManager().resolveActivity(netflix, 0) != null) {
-                startActivity(netflix);
-                return;
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("title", title));
+                Toast.makeText(this, "Netflix search: " + title, Toast.LENGTH_LONG).show();
             }
         } catch (Exception ignored) {
         }
-        // Fall back to just opening Netflix.
         try {
-            startActivity(new Intent(Intent.ACTION_MAIN).setPackage("com.netflix.ninja")
+            startActivity(new Intent(Intent.ACTION_MAIN)
+                    .setPackage("com.netflix.ninja")
                     .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Exception ignored) {
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                            | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Intent.ACTION_MAIN).setPackage("com.netflix.ninja")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception ignored) {
+            }
         }
     }
 
