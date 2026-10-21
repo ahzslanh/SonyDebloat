@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One Top 10 shelf: a heading and a horizontal rail of vertical 2:3 posters.
-     The rail slides as focus moves (RIGHT past the last visible poster brings the next ones in),
-     the way the Netflix / Google TV shelves on the stock home behave. -->
+<!-- One shelf row inside the home grid: a heading and a horizontal rail of vertical posters.
+     The rail's height is set in code from the poster size, so it measures correctly inside the
+     grid (a nested RecyclerView must not be left to wrap_content). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -15,17 +15,17 @@
         android:layout_height="wrap_content"
         android:paddingStart="60dp"
         android:paddingEnd="24dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="2dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="6dp"
         android:textColor="#F2FFFFFF"
-        android:textSize="14sp"
+        android:textSize="15sp"
         android:fontFamily="@font/outfit_medium"
         android:letterSpacing="0.01" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/shelfRail"
         android:layout_width="match_parent"
-        android:layout_height="150dp"
+        android:layout_height="190dp"
         android:clipToPadding="false"
         android:clipChildren="false"
         android:paddingStart="60dp"

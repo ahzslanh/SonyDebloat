@@ -25,6 +25,14 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
     /** Poster width in dp; the height follows the 2:3 ratio. */
     private static final int POSTER_W_DP = 84;
     private static final float FOCUS_SCALE = 1.08f;
+    /** Name line under a poster, and the rail's vertical padding. */
+    private static final int NAME_DP = 20;
+    private static final int PAD_DP = 8;
+
+    /** Height a rail needs for its posters: 2:3 poster + name + padding. */
+    static int railHeightDp() {
+        return Math.round(POSTER_W_DP * 3f / 2f) + NAME_DP + PAD_DP;
+    }
 
     interface Listener {
         /** A poster was activated: open this title. */

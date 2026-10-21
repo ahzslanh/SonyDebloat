@@ -429,7 +429,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 return adapter.isShelfAt(position) ? COLUMNS : 1;
             }
         });
-        grid.setHasFixedSize(true);
+        grid.setHasFixedSize(false);
         grid.setItemAnimator(null);
         // Tiles that scroll out while one is carried come back from the view cache without a rebind; set their
         // dimming again whenever one attaches, so none stays dim after the drop.
@@ -452,6 +452,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         adapter = new AppAdapter(this, this, COLUMNS, cfg);
         posterCache = new PosterCache(this);
+        posterCache.setOnReady(url -> {
+            // A poster just arrived: rebind the shelf rows so the tile fills in.
+            if (adapter != null) adapter.notifyPosterReady(url);
+        });
         loadShelves();
         dockApps = cfg.dockApps;
         fillDockLeavesSlots = !cfg.fillDock;
@@ -472,7 +476,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Keep the hero below the header when the library is enabled on a short screen,
             // even when the theme requests an extra visible row below the dock.
             int shelfClearance = cfg.appLibrary ? hero.getMeasuredHeight() + (int) (40 * density) : 0;
-            int want = Math.max(shelfClearance, h - dockRow - gridRows - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
+            // Shelves sit under the dock: lift the dock up by their height so both fit on screen.
+            int shelvesH = 0;
+            for (int i = 0; i < shellBlockChildCount(); i++) shelvesH += shelfRowHeightPx();
+            int want = Math.max(shelfClearance,
+                    h - dockRow - gridRows - shelvesH - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
             // Where the rows cannot fit even at the smallest tile (3 rows with the title on), the title keeps its
             // room above the dock and the last rows run off the bottom instead of the title drawing over the clock.
             if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
@@ -775,6 +783,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         cards = moduleCards ? CardFeature.run(() -> Cards.discover(this, hiddenApps,
                 () -> Cards.load(Cards.storeFile(this)), leanback), none) : none;
         adapter.setPosterCache(posterCache);
+        adapter.setShelfListener(shelfListener);
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none), leanback);
         lastFocusedKey = returnKey;
         lastFocused = returnSlot;
@@ -1842,58 +1851,30 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     /**
-     * Builds the three shelves under the dock from the cached list, refreshing them in the
-     * background when the cache is stale. A cached copy is drawn immediately, so Home never waits
-     * on the network and the shelves are the same on every start until they age out.
+     * Loads the three shelves from the cached list (refreshing in the background when stale) and
+     * hands them to the adapter, so they are drawn as grid rows right under the dock.
      */
+    /** How many shelf rows are currently shown. */
+    private int shellBlockChildCount() {
+        return adapter == null ? 0 : adapter.shelfCount();
+    }
+
+    /** Height of one shelf row in px (2:3 poster + name + heading). */
+    private int shelfRowHeightPx() {
+        return Math.round((ShelfRailAdapter.railHeightDp() + 30) * density);
+    }
+
     private void loadShelves() {
         Shelves.get(this, BuildConfig.TMDB_API_KEY, (shelves, cached) -> {
             if (isFinishing()) return;
-            View block = findViewById(R.id.shelfBlock);
-            if (!(block instanceof LinearLayout)) return;
-            LinearLayout container = (LinearLayout) block;
-            container.removeAllViews();
-            for (Shelves.Shelf shelf : shelves) {
-                container.addView(buildShelfRow(container, shelf));
-            }
-            container.setVisibility(container.getChildCount() > 0 ? View.VISIBLE : View.GONE);
+            List<AppAdapter.Shelf> rows = new ArrayList<>();
+            for (Shelves.Shelf s : shelves) rows.add(new AppAdapter.Shelf(s.title, s.items));
+            adapter.setShelves(rows);
+            reloadTiles();
+            // Re-run the dock clearance math now that shelf rows exist, so the dock lifts up and
+            // the shelves get the room under it.
+            grid.post(() -> grid.requestLayout());
         });
-    }
-
-    /** One shelf: a heading and a horizontal rail of vertical posters. */
-    private View buildShelfRow(LinearLayout parent, Shelves.Shelf shelf) {
-        View row = getLayoutInflater().inflate(R.layout.row_shelf, parent, false);
-        ((TextView) row.findViewById(R.id.shelfTitle)).setText(shelf.title);
-
-        RecyclerView rail = row.findViewById(R.id.shelfRail);
-        LinearLayoutManager lm = new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false);
-        rail.setLayoutManager(lm);
-        rail.setItemAnimator(null);
-        rail.setAdapter(new ShelfRailAdapter(shelf.items, posterCache, shelfListener));
-
-        // Keep the focused poster comfortably on screen while the rail slides.
-        rail.addOnScrollListener(new RecyclerView.OnScrollListener() {
-            @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
-                ensureFocusedVisible(rv, lm);
-            }
-        });
-
-        // Up from the rail reaches the dock; Down from the dock enters the first rail.
-        row.setFocusable(false);
-        return row;
-    }
-
-    /** Slides the rail so the focused poster keeps a margin from the edges, like the stock shelves. */
-    private void ensureFocusedVisible(RecyclerView rv, LinearLayoutManager lm) {
-        View focused = rv.findFocus();
-        if (focused == null) return;
-        int pos = lm.getPosition(focused);
-        if (pos == RecyclerView.NO_POSITION) return;
-        int margin = (int) (120 * density);
-        int left = focused.getLeft() - rv.getPaddingLeft();
-        int right = focused.getRight() - (rv.getWidth() - rv.getPaddingRight());
-        if (left < margin) rv.smoothScrollBy(left - margin, 0);
-        else if (right > -margin) rv.smoothScrollBy(right + margin, 0);
     }
 
     /** Poster focus/click from a shelf rail. */

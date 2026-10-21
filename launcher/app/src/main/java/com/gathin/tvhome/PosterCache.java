@@ -28,6 +28,17 @@ final class PosterCache {
     private static final int MAX_MEMORY_ENTRIES = 24;
     private static final String DIR = "posters";
 
+    /** Called on the main thread after a poster finishes downloading, so the tile can redraw. */
+    interface OnReady {
+        void onReady(String url);
+    }
+
+    private volatile OnReady onReady;
+
+    void setOnReady(OnReady r) {
+        this.onReady = r;
+    }
+
     private final Context ctx;
     private final LruCache<String, Bitmap> memory =
             new LruCache<String, Bitmap>(MAX_MEMORY_ENTRIES) {
@@ -42,7 +53,13 @@ final class PosterCache {
         this.ctx = ctx.getApplicationContext();
     }
 
-    /** A decoded poster for this tile size, from memory, disk or the network; null until ready. */
+    /**
+     * A decoded poster for this tile size, from memory or disk only — never the network.
+     *
+     * <p>Callers run on the main thread (RecyclerView binding), so a synchronous download would
+     * throw NetworkOnMainThreadException. When the poster is not on disk yet this returns null and
+     * starts the download; the next bind (or an explicit {@link #prefetch}) finds it.
+     */
     Bitmap get(String url, int reqW, int reqH) {
         if (url == null || reqW <= 0 || reqH <= 0) return null;
         String key = key(url);
@@ -51,13 +68,18 @@ final class PosterCache {
 
         File file = file(key);
         if (!file.exists()) {
-            download(url, file);
-            if (!file.exists()) return null;
+            prefetch(url);          // background download; nothing to draw yet
+            return null;
         }
         Bitmap bmp = decode(file, reqW, reqH);
         if (bmp != null) memory.put(key, bmp);
         file.delete();      // the decoded bitmap is cached; the file has done its job
         return bmp;
+    }
+
+    /** True when this poster is already decoded and ready to draw. */
+    boolean isReady(String url) {
+        return url != null && memory.get(key(url)) != null;
     }
 
     /** Kicks off a background fetch so a later {@link #get} finds the file ready. */
@@ -87,6 +109,9 @@ final class PosterCache {
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
             }
             tmp.renameTo(file);
+            final OnReady r = onReady;
+            if (r != null) new android.os.Handler(android.os.Looper.getMainLooper())
+                    .post(() -> r.onReady(url));
         } catch (Exception e) {
             Log.w(TAG, "download failed: " + url, e);
         } finally {
