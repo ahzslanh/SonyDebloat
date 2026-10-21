@@ -346,38 +346,44 @@
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- The wrapper clips at the grid's edge; the grid itself must not clip so scaled tiles can overflow their cells. -->
+        <!-- Two pages share this area: the app grid (page 1) and the shelves (page 2).
+             Down on a dock tile flips to the shelves; Up returns to the dock. -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:minHeight="260dp"
-            android:layout_marginTop="10dp">
+            android:layout_marginTop="10dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/grid"
+            <FrameLayout
+                android:id="@+id/gridPage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="40dp"
+                    android:clipToPadding="false"
+                    android:clipChildren="false"
+                    android:overScrollMode="never"
+                    android:scrollbars="none"
+                    android:descendantFocusability="afterDescendants" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:id="@+id/shelfBlock"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:paddingTop="10dp"
-                android:paddingBottom="40dp"
-                android:clipToPadding="false"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:baselineAligned="false"
                 android:clipChildren="false"
-                android:overScrollMode="never"
-                android:scrollbars="none"
-                android:descendantFocusability="afterDescendants" />
+                android:clipToPadding="false" />
         </FrameLayout>
-
-        <!-- Shelves: horizontal rails of vertical posters, filled at runtime and kept at the bottom. -->
-        <LinearLayout
-            android:id="@+id/shelfBlock"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:maxHeight="330dp"
-            android:orientation="vertical"
-            android:visibility="gone"
-            android:baselineAligned="false"
-            android:clipChildren="false"
-            android:clipToPadding="false" />
     </LinearLayout>
 
     <!-- The single floating glass highlight that springs between tiles. -->

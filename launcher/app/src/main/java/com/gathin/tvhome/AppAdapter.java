@@ -70,7 +70,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     static final class Entry {
-        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3, POSTER = 4, SHELF = 5;
+        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3;
 
         final int kind;
         final String label;
@@ -86,8 +86,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         final String posterUrl;
         /** Rank shown in the poster's badge (1-10), or 0. */
         final int rank;
-        /** Which shelf a SHELF row shows. */
-        int shelfIndex = -1;
 
         Entry(String label, ComponentName component, Drawable banner, Drawable icon) {
             this(APP, label, component, banner, icon, null, 0, null, 0);
@@ -196,17 +194,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final TileListener listener;
     /** Poster cache for the Top 10 shelves; null until the launcher hands one over. */
     private PosterCache posters;
-    /** Poster focus/click handler for the shelf rails. */
-    private ShelfRailAdapter.Listener shelfListener;
-    /** Top 10 shelves, each its own full-width row with a horizontal poster rail. */
-    private final List<Shelf> shelves = new ArrayList<>();
-
-    /** A labelled poster rail. Holds the shelf data directly; the rail adapter binds it. */
-    static final class Shelf {
-        final String title;
-        final List<Shelves.Item> items;
-        Shelf(String title, List<Shelves.Item> items) { this.title = title; this.items = items; }
-    }
     private final int dockSize;
     /** config dock_row: false makes the dock apps the first tiles of one plain grid (names shown, no empty slots). */
     private final boolean dockRow;
@@ -342,18 +329,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             fresh.add(docked + i, new Entry(Entry.EMPTY, "", new ComponentName(ctx, "empty-dock-slot-" + i),
                     null, null, null, 0));
         }
-        // A shelf is a full-width row of its own, placed right under the dock.
-        if (!shelves.isEmpty()) {
-            List<Entry> withShelves = new ArrayList<>(fresh);
-            int at = Math.min(docked + emptySlots, withShelves.size());
-            for (int i = 0; i < shelves.size(); i++) {
-                Entry row = new Entry(Entry.SHELF, shelves.get(i).title,
-                        new ComponentName(ctx, "shelf-" + i), null, null, null, 0);
-                row.shelfIndex = i;
-                withShelves.add(at + i, row);
-            }
-            fresh = withShelves;
-        }
         items.clear();
         items.addAll(fresh);
         notifyDataSetChanged();
@@ -414,10 +389,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             });
             return new RecyclerView.ViewHolder(row) { };
         }
-        if (viewType == 3) {
-            View row = LayoutInflater.from(ctx).inflate(R.layout.row_shelf, parent, false);
-            return new ShelfHolder(row, shelfListener, posters);
-        }
         View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_app, parent, false);
         float density = parent.getResources().getDisplayMetrics().density;
         int width = parent.getWidth() > 0 ? parent.getWidth() : parent.getMeasuredWidth();
@@ -446,11 +417,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         if (isLibraryAt(position)) return;
         Entry entry = items.get(position);
-        if (holder instanceof ShelfHolder) {
-            ShelfHolder sh = (ShelfHolder) holder;
-            sh.bind(shelfAt(entry.shelfIndex), posterCacheDensity());
-            return;
-        }
         Holder h = (Holder) holder;
         Entry e = entry;
         if (e.kind == Entry.EMPTY) {
@@ -546,16 +512,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     boolean isLibraryAt(int position) { return showLibrary && position == items.size(); }
 
-    /** A shelf row (full width, holds its own rail). */
-    boolean isShelfAt(int position) {
-        return position >= 0 && position < items.size() && items.get(position).kind == Entry.SHELF;
-    }
-
     @Override public int getItemViewType(int position) {
-        if (isLibraryAt(position)) return 1;
-        Entry e = items.get(position);
-        if (e.kind == Entry.SHELF) return 3;
-        return e.kind == Entry.POSTER ? 2 : 0;
+        return isLibraryAt(position) ? 1 : 0;
     }
 
     boolean containsPackage(String pkg) {
@@ -576,36 +534,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     /** Poster cache for the Top 10 shelves. */
     void setPosterCache(PosterCache cache) {
         this.posters = cache;
-    }
-
-    /** Poster focus/click handler for the shelf rails. */
-    void setShelfListener(ShelfRailAdapter.Listener l) {
-        this.shelfListener = l;
-    }
-
-    /** Replaces the Top 10 shelves. Takes effect at the next reload(). */
-    void setShelves(List<Shelf> next) {
-        shelves.clear();
-        if (next != null) shelves.addAll(next);
-    }
-
-    boolean hasShelves() {
-        return !shelves.isEmpty();
-    }
-
-    int shelfCount() {
-        return shelves.size();
-    }
-
-    /** A poster finished downloading: rebind the shelf rows so the tile fills in. */
-    void notifyPosterReady(String url) {
-        for (int i = 0; i < items.size(); i++) {
-            if (items.get(i).kind == Entry.SHELF) notifyItemChanged(i);
-        }
-    }
-
-    Shelf shelfAt(int index) {
-        return index >= 0 && index < shelves.size() ? shelves.get(index) : null;
     }
 
     /** Uses this saved order from the next reload() (Order.ranks). */
@@ -752,39 +680,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     private float posterCacheDensity() {
         return ctx.getResources().getDisplayMetrics().density;
-    }
-
-    /** A Top 10 shelf row: a heading and a horizontal rail of poster tiles. */
-    static final class ShelfHolder extends RecyclerView.ViewHolder {
-        final TextView title;
-        final RecyclerView rail;
-        final PosterCache cache;
-        final ShelfRailAdapter.Listener railListener;
-
-        ShelfHolder(View v, ShelfRailAdapter.Listener railListener, PosterCache cache) {
-            super(v);
-            this.railListener = railListener;
-            this.cache = cache;
-            title = v.findViewById(R.id.shelfTitle);
-            rail = v.findViewById(R.id.shelfRail);
-            rail.setLayoutManager(new LinearLayoutManager(v.getContext(),
-                    RecyclerView.HORIZONTAL, false));
-            rail.setItemAnimator(null);
-            rail.setHasFixedSize(false);
-        }
-
-        void bind(Shelf shelf, float density) {
-            if (shelf == null) { rail.setAdapter(null); return; }
-            title.setText(shelf.title);
-            // A nested RecyclerView must be given a height; wrap_content measures to nothing inside the grid.
-            int h = Math.round(ShelfRailAdapter.railHeightDp() * density);
-            ViewGroup.LayoutParams lp = rail.getLayoutParams();
-            if (lp.height != h) {
-                lp.height = h;
-                rail.setLayoutParams(lp);
-            }
-            rail.setAdapter(new ShelfRailAdapter(shelf.items, cache, railListener));
-        }
     }
 
     static final class Holder extends RecyclerView.ViewHolder {        final View card;

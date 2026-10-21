@@ -1,6 +1,5 @@
 package com.gathin.tvhome;
 
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -14,42 +13,41 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.List;
 
 /**
- * The poster rail inside one Top 10 shelf.
+ * The poster rail inside one shelf slot.
  *
- * <p>Vertical 2:3 posters, ranked 1..10, sliding horizontally as the D-pad moves. Each poster is
- * decoded at its measured size from {@link PosterCache}; neighbours are prefetched so moving right
- * does not wait on the network.
+ * <p>Vertical 2:3 posters, ranked 1..10. Right/Left walk the rail and stop at #10 / #1 — reaching an
+ * end never spills into another shelf. Up/Down are reported to the listener, which owns the page
+ * flip and the move between shelves.
  */
 final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.PosterVh> {
 
-    /** Poster width in dp; the height follows the 2:3 ratio. */
-    private static final int POSTER_W_DP = 84;
-    private static final float FOCUS_SCALE = 1.08f;
-    /** Name line under a poster, and the rail's vertical padding. */
-    private static final int NAME_DP = 20;
-    private static final int PAD_DP = 8;
+    /** Poster width in dp; height follows the 2:3 ratio. Two shelves fit the screen at this size. */
+    private static final int POSTER_W_DP = 88;
+    private static final float FOCUS_SCALE = 1.06f;
+    private static final int NAME_DP = 18;
+    private static final int PAD_DP = 6;
 
-    /** Height a rail needs for its posters: 2:3 poster + name + padding. */
+    /** Height one rail needs: 2:3 poster + name line + breathing room. */
     static int railHeightDp() {
         return Math.round(POSTER_W_DP * 3f / 2f) + NAME_DP + PAD_DP;
     }
 
     interface Listener {
-        /** A poster was activated: open this title. */
         void onPosterClicked(Shelves.Item item);
-
-        /** A poster gained focus: the backdrop follows it. */
         void onPosterFocused(Shelves.Item item);
-
-        /** Up or Down pressed on a poster: leave the rail for the dock or the next rail. */
-        void onPosterVertical(Shelves.Item item, int keyCode);
+        /** Up or Down on a poster: the page flip / shelf move is the launcher's decision. */
+        void onPosterVertical(int railIndex, int keyCode);
+        /** Hold OK on a poster: offer to replace this shelf. */
+        void onPosterLongPress(int railIndex, Shelves.Item item);
     }
 
+    private final int railIndex;
     private final List<Shelves.Item> items;
     private final PosterCache cache;
     private final Listener listener;
 
-    ShelfRailAdapter(List<Shelves.Item> items, PosterCache cache, Listener listener) {
+    ShelfRailAdapter(int railIndex, List<Shelves.Item> items, PosterCache cache, Listener listener) {
+        this.railIndex = railIndex;
         this.items = items;
         this.cache = cache;
         this.listener = listener;
@@ -77,7 +75,7 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
                 .inflate(R.layout.item_poster, parent, false);
         float density = parent.getResources().getDisplayMetrics().density;
         int w = Math.round(POSTER_W_DP * density);
-        int h = Math.round(w * 3f / 2f);                 // 2:3 poster
+        int h = Math.round(w * 3f / 2f);
 
         View card = v.findViewById(R.id.card);
         ViewGroup.LayoutParams lp = card.getLayoutParams();
@@ -88,7 +86,7 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         View name = v.findViewById(R.id.name);
         ViewGroup.MarginLayoutParams nlp = (ViewGroup.MarginLayoutParams) name.getLayoutParams();
         nlp.width = w;
-        nlp.topMargin = h + Math.round(6 * density);
+        nlp.topMargin = h + Math.round(4 * density);
         name.setLayoutParams(nlp);
 
         return new PosterVh(v);
@@ -101,22 +99,24 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         h.name.setText(item.year.isEmpty() ? item.title : item.title + " (" + item.year + ")");
         h.rank.setText("#" + item.rank);
 
-        // Focus: zoom the tile, reveal the name, and drive the backdrop.
         h.card.setOnFocusChangeListener((v, focused) -> {
-            if (!listenerFocusAnimations()) return;
             v.animate().scaleX(focused ? FOCUS_SCALE : 1f)
                     .scaleY(focused ? FOCUS_SCALE : 1f).setDuration(140).start();
             h.name.setAlpha(focused ? 1f : 0f);
             if (focused) listener.onPosterFocused(item);
         });
         h.card.setOnClickListener(v -> listener.onPosterClicked(item));
-        // Only Up/Down leave the rail. Left/Right at the ends stop here: reaching poster #10 must not
-        // spill into the next shelf.
+        h.card.setOnLongClickListener(v -> {
+            listener.onPosterLongPress(railIndex, item);
+            return true;
+        });
+
+        // Keys: Up/Down leave the rail; Left/Right stop at the ends so #10 never jumps shelves.
         h.card.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
             if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
                     || keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
-                listener.onPosterVertical(item, keyCode);
+                listener.onPosterVertical(railIndex, keyCode);
                 return true;
             }
             if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && position == 0) return true;
@@ -124,19 +124,8 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
                     && position == items.size() - 1) return true;
             return false;
         });
-        // On a TV the D-pad select can be consumed before the click listener runs; handle the key too.
-        h.card.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() != android.view.KeyEvent.ACTION_UP) return false;
-            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER
-                    || keyCode == android.view.KeyEvent.KEYCODE_ENTER
-                    || keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER) {
-                listener.onPosterClicked(item);
-                return true;
-            }
-            return false;
-        });
 
-        // Poster: measured-size decode, cache-first, skip if this holder was recycled onto another item.
+        // Poster: measured-size decode, cache-first, guarded against a recycled holder.
         final ImageView target = h.poster;
         final String url = item.posterUrl;
         target.setTag(url);
@@ -153,21 +142,12 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         if (target.getWidth() > 0) load.run();
         else target.post(load);
 
-        // Prefetch a couple ahead so pressing RIGHT never waits on the network.
         for (int ahead = 1; ahead <= 2 && position + ahead < items.size(); ahead++) {
             cache.prefetch(items.get(position + ahead).posterUrl);
         }
     }
 
-    @Override
-    public int getItemCount() {
-        return items.size();
-    }
-
-    /**
-     * A poster finished downloading: rebind any visible tile showing that URL so its artwork appears.
-     * Called on the main thread; only the bound holders are touched, so this stays cheap.
-     */
+    /** A poster finished downloading: rebind the visible tile showing it. */
     void posterReady(String url, RecyclerView rail) {
         if (url == null) return;
         for (int i = 0; i < rail.getChildCount(); i++) {
@@ -178,8 +158,8 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         }
     }
 
-    /** Motion preference, supplied by the caller; kept simple here (always on). */
-    private boolean listenerFocusAnimations() {
-        return true;
+    @Override
+    public int getItemCount() {
+        return items.size();
     }
 }

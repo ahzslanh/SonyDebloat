@@ -121,6 +121,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RecyclerView grid;
     /** Posters for the Top 10 shelves (disk + memory), created with the adapter. */
     private PosterCache posterCache;
+    /** Every shelf source, keyed by id, as last fetched. */
+    private final java.util.Map<String, Shelves.Source> catalog = new java.util.LinkedHashMap<>();
+    /** True while the shelves page (page 2) is showing instead of the dock page. */
+    private boolean shelvesPage;
     /** Top 10 shelf tiles, rebuilt when TMDB answers. */
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
@@ -426,7 +430,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             @Override public int getSpanSize(int position) {
                 if (adapter == null) return 1;
                 if (adapter.isLibraryAt(position)) return COLUMNS;
-                return adapter.isShelfAt(position) ? COLUMNS : 1;
+                return 1;
             }
         });
         grid.setHasFixedSize(false);
@@ -454,9 +458,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         posterCache = new PosterCache(this);
         posterCache.setOnReady(url -> {
             // A poster just arrived: rebind the visible tile in every rail that is showing it.
-            for (View railView : shelfRailViews()) {
-                if (!(railView instanceof RecyclerView)) continue;
-                RecyclerView rv = (RecyclerView) railView;
+            for (RecyclerView rv : shelfRails()) {
                 if (rv.getAdapter() instanceof ShelfRailAdapter) {
                     ((ShelfRailAdapter) rv.getAdapter()).posterReady(url, rv);
                 }
@@ -788,7 +790,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         cards = moduleCards ? CardFeature.run(() -> Cards.discover(this, hiddenApps,
                 () -> Cards.load(Cards.storeFile(this)), leanback), none) : none;
         adapter.setPosterCache(posterCache);
-        adapter.setShelfListener(shelfListener);
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none), leanback);
         lastFocusedKey = returnKey;
         lastFocused = returnSlot;
@@ -1823,17 +1824,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
             if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
-            // The dock is now the first row, with the shelves under it: Up from the first shelf row
-            // returns to the dock.
-            if (adapter.isShelfAt(position)) {
-                focusTile(Math.min(lastFocused % COLUMNS, adapter.dockFilled() - 1));
-                return true;
-            }
             target = position - COLUMNS;
         } else {
-            // Down from the dock row enters the first shelf, when one is present.
-            if (position < COLUMNS && adapter.hasShelves()) {
-                focusFirstShelfPoster();
+            // Down from the dock flips to the shelves page.
+            if (position < COLUMNS) {
+                showShelvesPage();
                 return true;
             }
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
@@ -1873,122 +1868,222 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * Loads the three shelves from the cached list (refreshing in the background when stale) and
      * hands them to the adapter, so they are drawn as grid rows right under the dock.
      */
-    /** Moves focus from the dock into the first poster of the first shelf rail. */
-    private void focusFirstShelfPoster() {
-        for (int i = 0; i < grid.getChildCount(); i++) {
-            View child = grid.getChildAt(i);
-            if (!(child instanceof ViewGroup)) continue;
-            RecyclerView rail = child.findViewById(R.id.shelfRail);
-            if (rail == null) continue;
-            RecyclerView.ViewHolder first = rail.findViewHolderForAdapterPosition(0);
-            View card = first != null ? first.itemView.findViewById(R.id.card) : null;
-            if (card != null && card.requestFocus()) return;
+    // ------------------------------------------------------------------ shelves page (page 2)
+
+    /** Flips to the shelves page and puts focus on the first poster. */
+    private void showShelvesPage() {
+
+        shelvesPage = true;
+        View gridPage = findViewById(R.id.gridPage);
+        View block = findViewById(R.id.shelfBlock);
+        if (!(block instanceof ViewGroup) || ((ViewGroup) block).getChildCount() == 0) {
+            shelvesPage = false;
+            return;
         }
+        block.setVisibility(View.VISIBLE);
+        if (gridPage != null) gridPage.setVisibility(View.INVISIBLE);
+        // The dock's big app name belongs to page 1; hide it so it cannot overlap the shelf headings.
+        hideHero();
+        focusShelfPoster(0, 0);
     }
 
-    /** The shelf rails in the order they appear under the dock. */
-    private List<View> shelfRailViews() {
-        List<View> out = new ArrayList<>();
-        for (int i = 0; i < grid.getChildCount(); i++) {
-            View child = grid.getChildAt(i);
+    /** Back to the dock page, focus on the dock tile that was used last. */
+    private void showDockPage() {
+        shelvesPage = false;
+        View gridPage = findViewById(R.id.gridPage);
+        View block = findViewById(R.id.shelfBlock);
+        if (gridPage != null) gridPage.setVisibility(View.VISIBLE);
+        if (block != null) block.setVisibility(View.GONE);
+        int dockPos = Math.max(0, Math.min(lastFocused % Math.max(1, COLUMNS),
+                Math.max(0, adapter.dockFilled() - 1)));
+        focusTile(dockPos);
+    }
+
+    /** Focus a poster in a rail, scrolling the rail so it is fully visible. */
+    private void focusShelfPoster(int railIndex, int column) {
+        List<RecyclerView> rails = shelfRails();
+        if (railIndex < 0 || railIndex >= rails.size()) return;
+        final RecyclerView rv = rails.get(railIndex);
+        if (!(rv.getAdapter() instanceof ShelfRailAdapter)) return;
+        final int target = Math.max(0, Math.min(column, rv.getAdapter().getItemCount() - 1));
+        rv.scrollToPosition(target);
+        rv.post(() -> {
+            RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(target);
+            View card = vh != null ? vh.itemView.findViewById(R.id.card) : null;
+            if (card != null) {
+                card.requestFocus();
+            } else {
+                rv.post(() -> {
+                    RecyclerView.ViewHolder again = rv.findViewHolderForAdapterPosition(target);
+                    View c2 = again != null ? again.itemView.findViewById(R.id.card) : null;
+                    if (c2 != null) c2.requestFocus();
+                });
+            }
+        });
+    }
+
+    /** The rails currently on the shelves page, in order. */
+    private List<RecyclerView> shelfRails() {
+        List<RecyclerView> out = new ArrayList<>();
+        View block = findViewById(R.id.shelfBlock);
+        if (!(block instanceof ViewGroup)) return out;
+        ViewGroup g = (ViewGroup) block;
+        for (int i = 0; i < g.getChildCount(); i++) {
+            View child = g.getChildAt(i);
             if (!(child instanceof ViewGroup)) continue;
             View rail = child.findViewById(R.id.shelfRail);
-            if (rail != null) out.add(rail);
+            if (rail instanceof RecyclerView) out.add((RecyclerView) rail);
         }
         return out;
     }
 
-    /** How many shelf rows are currently shown. */
-    private int shellBlockChildCount() {
-        return adapter == null ? 0 : adapter.shelfCount();
-    }
-
-    /** Height of one shelf row in px (2:3 poster + name + heading). */
-    private int shelfRowHeightPx() {
-        return Math.round((ShelfRailAdapter.railHeightDp() + 30) * density);
-    }
-
+    /** Fills the shelves page from the catalogue, honouring the saved slot choices. */
     private void loadShelves() {
-        Shelves.get(this, BuildConfig.TMDB_API_KEY, (shelves, cached) -> {
+        Shelves.get(this, BuildConfig.TMDB_API_KEY, (catalog, cached) -> {
             if (isFinishing()) return;
-            List<AppAdapter.Shelf> rows = new ArrayList<>();
-            for (Shelves.Shelf s : shelves) rows.add(new AppAdapter.Shelf(s.title, s.items));
-            adapter.setShelves(rows);
-            reloadTiles();
-            // Warm the cache for every shelf poster so scrolling never shows a blank tile.
-            if (posterCache != null) {
-                for (Shelves.Shelf s2 : shelves) {
-                    for (Shelves.Item it : s2.items) posterCache.prefetch(it.posterUrl);
-                }
-            }
-            // Re-run the dock clearance math now that shelf rows exist, so the dock lifts up and
-            // the shelves get the room under it.
-            grid.post(() -> grid.requestLayout());
+            this.catalog.clear();
+            this.catalog.putAll(catalog);
+            buildShelfPage();
         });
     }
 
-    /** Poster focus/click from a shelf rail. */
+    /** Rebuilds both shelf rails from the catalogue and the saved slots. */
+    private void buildShelfPage() {
+        View block = findViewById(R.id.shelfBlock);
+        if (!(block instanceof LinearLayout)) return;
+        LinearLayout container = (LinearLayout) block;
+        container.removeAllViews();
+
+        String[] slots = ShelfSlots.load(this);
+        for (int i = 0; i < ShelfSlots.SLOTS; i++) {
+            Shelves.Source src = catalog.get(slots[i]);
+            if (src == null || src.items.isEmpty()) continue;
+            container.addView(buildShelfRow(container, i, src));
+        }
+        if (container.getChildCount() == 0) {
+            // Nothing fetched yet: keep the page available with the configured titles so it is not blank.
+            for (int i = 0; i < ShelfSlots.SLOTS; i++) {
+                container.addView(buildEmptyShelfRow(container, i, Shelves.titleOf(slots[i])));
+            }
+        }
+        if (shelvesPage) container.setVisibility(View.VISIBLE);
+    }
+
+    /** One shelf: heading + a horizontal rail of posters. */
+    private View buildShelfRow(LinearLayout parent, int slotIndex, Shelves.Source source) {
+        View row = getLayoutInflater().inflate(R.layout.row_shelf, parent, false);
+        ((TextView) row.findViewById(R.id.shelfTitle)).setText(source.title);
+
+        RecyclerView rail = row.findViewById(R.id.shelfRail);
+        LinearLayoutManager lm = new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false);
+        rail.setLayoutManager(lm);
+        rail.setItemAnimator(null);
+        rail.setAdapter(new ShelfRailAdapter(slotIndex, source.items, posterCache, shelfListener));
+        rail.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                ensureFocusedVisible(rv, lm);
+            }
+        });
+        // Fill the rail height so two shelves fit the page.
+        ViewGroup.LayoutParams lp = rail.getLayoutParams();
+        lp.height = Math.round(ShelfRailAdapter.railHeightDp() * getResources().getDisplayMetrics().density);
+        rail.setLayoutParams(lp);
+        return row;
+    }
+
+    /** A shelf whose source has not been fetched yet: heading and an empty rail. */
+    private View buildEmptyShelfRow(LinearLayout parent, int slotIndex, String title) {
+        View row = getLayoutInflater().inflate(R.layout.row_shelf, parent, false);
+        ((TextView) row.findViewById(R.id.shelfTitle)).setText(title);
+        RecyclerView rail = row.findViewById(R.id.shelfRail);
+        rail.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false));
+        rail.setAdapter(null);
+        return row;
+    }
+
+    /** Slides a rail so the focused poster keeps a margin from the edges. */
+    private void ensureFocusedVisible(RecyclerView rv, LinearLayoutManager lm) {
+        View focused = rv.findFocus();
+        if (focused == null) return;
+        int margin = (int) (110 * density);
+        int left = focused.getLeft() - rv.getPaddingLeft();
+        int right = focused.getRight() - (rv.getWidth() - rv.getPaddingRight());
+        if (left < margin) rv.smoothScrollBy(left - margin, 0);
+        else if (right > -margin) rv.smoothScrollBy(right + margin, 0);
+    }
+
+    /** Poster focus/click/swap from a shelf rail. */
     private final ShelfRailAdapter.Listener shelfListener = new ShelfRailAdapter.Listener() {
         @Override public void onPosterClicked(Shelves.Item item) {
             openOnNetflix(item.title);
         }
 
         @Override public void onPosterFocused(Shelves.Item item) {
-            // The backdrop follows the focused poster's artwork, like the dock tiles do.
             showPosterBackdrop(item);
         }
 
-        @Override public void onPosterVertical(Shelves.Item item, int keyCode) {
-            // Which rail holds the focus, and which poster in it?
-            List<View> rails = shelfRailViews();
-            int railIndex = -1, col = 0;
-            for (int i = 0; i < rails.size(); i++) {
-                RecyclerView rv = (RecyclerView) rails.get(i);
-                View focused = rv.findFocus();
-                if (focused != null) {
-                    railIndex = i;
-                    col = rv.getChildAdapterPosition(focused);
-                    break;
-                }
-            }
-            if (railIndex < 0) return;
-
+        @Override public void onPosterVertical(int railIndex, int keyCode) {
+            List<RecyclerView> rails = shelfRails();
             if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
                 if (railIndex == 0) {
-                    // Top rail: back to the dock, in the column the user last used there.
-                    int dockPos = Math.max(0, Math.min(col, Math.max(0, adapter.dockFilled() - 1)));
-                    focusTile(dockPos);
+                    showDockPage();                       // top shelf: back to the dock page
                 } else {
-                    focusRailAt(rails, railIndex - 1, col);
+                    focusShelfPoster(railIndex - 1, columnOf(rails, railIndex));
                 }
                 return;
             }
-            // Down moves to the next shelf only; the last shelf keeps focus where it is.
-            if (railIndex + 1 < rails.size()) focusRailAt(rails, railIndex + 1, col);
+            // Down: the next shelf only; on the last shelf, stay put.
+            if (railIndex + 1 < rails.size()) focusShelfPoster(railIndex + 1, columnOf(rails, railIndex));
         }
 
-        /** Moves focus to a poster in another rail, keeping the column where possible. */
-        private void focusRailAt(List<View> rails, int index, int col) {
-            if (index < 0 || index >= rails.size()) return;
-            final RecyclerView rv = (RecyclerView) rails.get(index);
-            if (!(rv.getAdapter() instanceof ShelfRailAdapter)) return;
-            final int target = Math.max(0, Math.min(col, rv.getAdapter().getItemCount() - 1));
-            rv.scrollToPosition(target);
-            rv.post(() -> {
-                RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(target);
-                View card = vh != null ? vh.itemView.findViewById(R.id.card) : null;
-                if (card != null) {
-                    card.requestFocus();
-                } else {
-                    rv.post(() -> {
-                        RecyclerView.ViewHolder again = rv.findViewHolderForAdapterPosition(target);
-                        View c2 = again != null ? again.itemView.findViewById(R.id.card) : null;
-                        if (c2 != null) c2.requestFocus();
-                    });
-                }
-            });
+        @Override public void onPosterLongPress(int railIndex, Shelves.Item item) {
+            showShelfSwapMenu(railIndex, item);
         }
     };
+
+    /** Column of the focused poster in a rail (0 when unknown). */
+    private int columnOf(List<RecyclerView> rails, int railIndex) {
+        if (railIndex < 0 || railIndex >= rails.size()) return 0;
+        RecyclerView rv = rails.get(railIndex);
+        View focused = rv.findFocus();
+        return focused != null ? rv.getChildAdapterPosition(focused) : 0;
+    }
+
+    /** "Hold OK on a poster" menu: replace this shelf with another source. */
+    private void showShelfSwapMenu(int railIndex, Shelves.Item item) {
+        final BlurScrim scrim = new BlurScrim(this);
+        BlurScrim.attach(root, scrim, root.getChildCount());
+        scrim.captureAndShow(getWindow(), root);
+
+        View panel = getLayoutInflater().inflate(R.layout.popup_tile_menu, root, false);
+        LinearLayout rows = panel.findViewById(R.id.rows);
+        ((TextView) panel.findViewById(R.id.menuTitle)).setText("Replace shelf");
+
+        final PopupWindow popup = glassPopup(panel, (int) (300 * density));
+        popup.setOnDismissListener(() -> {
+            if (openPopup == popup) openPopup = null;
+            scrim.release();
+            root.removeView(scrim);
+        });
+
+        String[] current = ShelfSlots.load(this);
+        for (String id : Shelves.ALL_IDS) {
+            boolean active = railIndex < current.length && id.equals(current[railIndex]);
+            addIconMenuRow(rows, popup,
+                    active ? R.drawable.ic_info : R.drawable.ic_swap_vert,
+                    Shelves.titleOf(id) + (active ? "  (showing)" : ""),
+                    () -> {
+                        ShelfSlots.set(this, railIndex, id);
+                        buildShelfPage();
+                        focusShelfPoster(railIndex, 0);
+                    });
+        }
+
+        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        popup.setWidth(Math.max((int) (300 * density), panel.getMeasuredWidth()));
+        popup.showAtLocation(root, Gravity.END | Gravity.CENTER_VERTICAL, (int) (28 * density), 0);
+        rows.getChildAt(0).requestFocus();
+    }
 
     /** Fades the focused poster's artwork into the backdrop. */
     private void showPosterBackdrop(Shelves.Item item) {
@@ -2016,10 +2111,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override public void onTileClicked(int position) {
         AppAdapter.Entry e = adapter.entryAt(position);
         if (e == null) return;
-        if (e.kind == AppAdapter.Entry.POSTER) {
-            openOnNetflix(e.label);
-            return;
-        }
         if (e.component != null && e.kind != AppAdapter.Entry.EMPTY) {
             try {
                 Intent i = new Intent(Intent.ACTION_MAIN).setComponent(e.component)

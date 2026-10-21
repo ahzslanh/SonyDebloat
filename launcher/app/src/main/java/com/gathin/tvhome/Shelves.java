@@ -15,27 +15,32 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The three shelves, and the cache that keeps them off the network.
+ * Every shelf the launcher can show, plus the cache that keeps them off the network.
+ *
+ * <p>A "source" is one rail of ten posters. The home screen shows two of them at a time, and the
+ * owner can swap either slot for any other source with the long-press menu on a poster.
  *
  * <ul>
  *   <li><b>Netflix Movies</b> — Netflix's own Malaysia Top 10 movies, read from Tudum.</li>
  *   <li><b>Netflix Series</b> — Netflix's own Malaysia Top 10 shows, read from Tudum.</li>
- *   <li><b>TMDB Trending</b> — TMDB's weekly trending list.</li>
+ *   <li><b>TMDB Movies</b> — TMDB's weekly trending movies.</li>
+ *   <li><b>TMDB Series</b> — TMDB's weekly trending shows.</li>
  * </ul>
  *
  * <p>Netflix publishes no API, but the Top 10 pages are public HTML; the titles are read from them
  * and each title's poster is looked up on TMDB, which is where the artwork comes from. Nothing needs
  * a Netflix login.
  *
- * <p><b>Caching.</b> Everything is written to {@code files/shelves.json} and reused until it is
- * stale ({@link #TTL_MS}, six hours). The launcher therefore draws the shelves instantly from disk
- * on every start, and only refetches when the cache is old or missing. A failed fetch keeps the
- * cached copy rather than emptying the shelves.
+ * <p><b>Caching.</b> Every source is written to {@code files/shelves.json} and reused until it is
+ * stale ({@link #TTL_MS}, six hours). The launcher draws the shelves instantly from disk on every
+ * start, and only refetches when the cache is old or missing. A failed fetch keeps the cached copy.
  */
 final class Shelves {
 
@@ -64,50 +69,69 @@ final class Shelves {
         }
     }
 
-    /** A named rail of posters. */
-    static final class Shelf {
+    /** One rail of posters, with a stable id so a slot can point at it and the owner can swap it. */
+    static final class Source {
+        final String id;
         final String title;
         final List<Item> items;
-        Shelf(String title, List<Item> items) { this.title = title; this.items = items; }
+        Source(String id, String title, List<Item> items) {
+            this.id = id; this.title = title; this.items = items;
+        }
+    }
+
+    /** The ids the launcher knows how to build, in the order the swap menu lists them. */
+    static final String[] ALL_IDS = {
+            "netflix_movies", "netflix_series", "tmdb_movies", "tmdb_series"
+    };
+
+    /** Title for a source id, for the swap menu (so the menu works before a fetch completes). */
+    static String titleOf(String id) {
+        switch (id) {
+            case "netflix_movies": return "Top 10 Movies on Netflix";
+            case "netflix_series": return "Top 10 Series on Netflix";
+            case "tmdb_movies":    return "Trending Movies on TMDB";
+            case "tmdb_series":    return "Trending Series on TMDB";
+            default:               return id;
+        }
     }
 
     interface Callback {
         /** Always called on the main thread; cached=true when nothing was fetched. */
-        void onShelves(List<Shelf> shelves, boolean cached);
+        void onCatalog(Map<String, Source> catalog, boolean cached);
     }
 
     private Shelves() { }
 
     /**
-     * Returns the shelves. When the cache is fresh it is handed back at once; otherwise the cached
-     * copy is shown first (so the home screen is never empty) and a refresh follows.
+     * Returns every source, keyed by id. When the cache is fresh it is handed back at once; otherwise
+     * the cached copy is shown first (so the home screen is never empty) and a refresh follows.
      */
     static void get(final Context ctx, final String tmdbKey, final Callback cb) {
         final File file = new File(ctx.getFilesDir(), FILE);
         final String cachedText = read(file);
-        List<Shelf> cached = decode(cachedText);
+        Map<String, Source> cached = decode(cachedText);
 
         if (!cached.isEmpty() && !isStale(cachedText)) {
-            cb.onShelves(cached, true);
+            cb.onCatalog(cached, true);
             return;
         }
-        if (!cached.isEmpty()) cb.onShelves(cached, true);   // show stale content while refreshing
+        if (!cached.isEmpty()) cb.onCatalog(cached, true);   // show stale content while refreshing
 
         new Thread(() -> {
-            List<Shelf> fresh = fetch(tmdbKey);
+            Map<String, Source> fresh = fetch(tmdbKey);
             if (fresh.isEmpty()) return;                     // keep the cached copy on failure
             write(file, encode(fresh));
-            cb.onShelves(fresh, false);
+            cb.onCatalog(fresh, false);
         }, "shelves-fetch").start();
     }
 
     /** Forces a refetch, ignoring the TTL (used by the Settings action). */
     static void refresh(final Context ctx, final String tmdbKey, final Callback cb) {
         new Thread(() -> {
-            List<Shelf> fresh = fetch(tmdbKey);
+            Map<String, Source> fresh = fetch(tmdbKey);
             if (fresh.isEmpty()) return;
             write(new File(ctx.getFilesDir(), FILE), encode(fresh));
-            cb.onShelves(fresh, false);
+            cb.onCatalog(fresh, false);
         }, "shelves-refresh").start();
     }
 
@@ -123,14 +147,16 @@ final class Shelves {
 
     // ------------------------------------------------------------------ fetching
 
-    private static List<Shelf> fetch(String tmdbKey) {
-        List<Shelf> out = new ArrayList<>();
-        List<Item> movies = netflixTudum(shelvesUrl(TUDUM), "movie", tmdbKey);
-        if (!movies.isEmpty()) out.add(new Shelf("Top 10 Movies on Netflix", movies));
-        List<Item> shows = netflixTudum(shelvesUrl(TUDUM) + "/tv", "tv", tmdbKey);
-        if (!shows.isEmpty()) out.add(new Shelf("Top 10 Series on Netflix", shows));
-        List<Item> trending = tmdbTrending(tmdbKey, "movie");
-        if (!trending.isEmpty()) out.add(new Shelf("Trending on TMDB", trending));
+    private static Map<String, Source> fetch(String tmdbKey) {
+        Map<String, Source> out = new LinkedHashMap<>();
+        List<Item> movies = netflixTudum(TUDUM, "movie", tmdbKey);
+        if (!movies.isEmpty()) out.put("netflix_movies", new Source("netflix_movies", titleOf("netflix_movies"), movies));
+        List<Item> shows = netflixTudum(TUDUM + "/tv", "tv", tmdbKey);
+        if (!shows.isEmpty()) out.put("netflix_series", new Source("netflix_series", titleOf("netflix_series"), shows));
+        List<Item> tmdbMovies = tmdbTrending(tmdbKey, "movie");
+        if (!tmdbMovies.isEmpty()) out.put("tmdb_movies", new Source("tmdb_movies", titleOf("tmdb_movies"), tmdbMovies));
+        List<Item> tmdbSeries = tmdbTrending(tmdbKey, "tv");
+        if (!tmdbSeries.isEmpty()) out.put("tmdb_series", new Source("tmdb_series", titleOf("tmdb_series"), tmdbSeries));
         return out;
     }
 
@@ -235,17 +261,18 @@ final class Shelves {
 
     // ------------------------------------------------------------------ cache file
 
-    private static String encode(List<Shelf> shelves) {
+    private static String encode(Map<String, Source> catalog) {
         try {
             JSONObject root = new JSONObject();
             root.put("fetchedAt", System.currentTimeMillis());
-            root.put("version", 1);
+            root.put("version", 2);
             JSONArray arr = new JSONArray();
-            for (Shelf s : shelves) {
+            for (Source src : catalog.values()) {
                 JSONObject so = new JSONObject();
-                so.put("title", s.title);
+                so.put("id", src.id);
+                so.put("title", src.title);
                 JSONArray items = new JSONArray();
-                for (Item i : s.items) {
+                for (Item i : src.items) {
                     JSONObject io = new JSONObject();
                     io.put("rank", i.rank);
                     io.put("title", i.title);
@@ -256,19 +283,25 @@ final class Shelves {
                 so.put("items", items);
                 arr.put(so);
             }
-            root.put("shelves", arr);
+            root.put("sources", arr);
             return root.toString();
         } catch (Exception e) {
             return null;
         }
     }
 
-    private static List<Shelf> decode(String text) {
-        List<Shelf> out = new ArrayList<>();
+    private static Map<String, Source> decode(String text) {
+        Map<String, Source> out = new LinkedHashMap<>();
         if (text == null) return out;
         try {
-            JSONArray arr = new JSONObject(text).optJSONArray("shelves");
-            if (arr == null) return out;
+            JSONObject root = new JSONObject(text);
+            JSONArray arr = root.optJSONArray("sources");
+            if (arr == null) {
+                // Old single-list format: give what it had back under the Netflix ids so a stale
+                // cache from a previous build still shows something until the first refresh.
+                arr = root.optJSONArray("shelves");
+                if (arr == null) return out;
+            }
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject so = arr.getJSONObject(i);
                 JSONArray items = so.optJSONArray("items");
@@ -280,7 +313,17 @@ final class Shelves {
                                 io.optString("poster"), io.optString("year")));
                     }
                 }
-                if (!list.isEmpty()) out.add(new Shelf(so.optString("title"), list));
+                if (list.isEmpty()) continue;
+                String id = so.optString("id", "");
+                String title = so.optString("title", "");
+                // Old format had no id: infer from the title.
+                if (id.isEmpty()) {
+                    if (title.contains("Movies on Netflix")) id = "netflix_movies";
+                    else if (title.contains("Series on Netflix")) id = "netflix_series";
+                    else if (title.contains("TMDB")) id = "tmdb_movies";
+                }
+                if (id.isEmpty()) continue;
+                out.put(id, new Source(id, title.isEmpty() ? titleOf(id) : title, list));
             }
         } catch (Exception e) {
             Log.w(TAG, "cache decode failed", e);
