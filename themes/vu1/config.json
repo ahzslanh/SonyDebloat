@@ -15,7 +15,7 @@
     "com.google.android.youtube.tvmusic",
     "com.sony.dtv.remotecontrolsettings"
   ],
-  "columns": 5,
+  "columns": 6,
   "rows_below_dock": 0,
   "reduced_motion": false,
   "reorder_button": false,

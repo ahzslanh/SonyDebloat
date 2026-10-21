@@ -110,7 +110,8 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
             if (focused) listener.onPosterFocused(item);
         });
         h.card.setOnClickListener(v -> listener.onPosterClicked(item));
-        // Up/Down leave the rail: Up goes to the dock (or the rail above), Down to the rail below.
+        // Only Up/Down leave the rail. Left/Right at the ends stop here: reaching poster #10 must not
+        // spill into the next shelf.
         h.card.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
             if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP
@@ -118,6 +119,9 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
                 listener.onPosterVertical(item, keyCode);
                 return true;
             }
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && position == 0) return true;
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+                    && position == items.size() - 1) return true;
             return false;
         });
         // On a TV the D-pad select can be consumed before the click listener runs; handle the key too.

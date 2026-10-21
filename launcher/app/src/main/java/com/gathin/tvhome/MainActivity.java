@@ -482,11 +482,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Keep the hero below the header when the library is enabled on a short screen,
             // even when the theme requests an extra visible row below the dock.
             int shelfClearance = cfg.appLibrary ? hero.getMeasuredHeight() + (int) (40 * density) : 0;
-            // Shelves sit under the dock: lift the dock up by their height so both fit on screen.
-            int shelvesH = 0;
-            for (int i = 0; i < shellBlockChildCount(); i++) shelvesH += shelfRowHeightPx();
+            // The dock stays parked at the bottom of the screen, exactly as before the shelves were
+            // added. The shelves live below the fold and scroll into view when the user navigates down.
             int want = Math.max(shelfClearance,
-                    h - dockRow - gridRows - shelvesH - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
+                    h - dockRow - gridRows - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
             // Where the rows cannot fit even at the smallest tile (3 rows with the title on), the title keeps its
             // room above the dock and the last rows run off the bottom instead of the title drawing over the clock.
             if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
@@ -1316,7 +1315,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void showHero(int position, float dockTopInRoot) {
         String label = adapter.labelAt(position);
         int color = adapter.ambientColorAt(position);
-        float y = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
+        float computedY = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
+        // Never let the name ride up into the clock: keep it below the header block.
+        float minY = (float) grid.getTop() + grid.getPaddingTop() + 4 * density;
+        final float y = Math.max(computedY, minY);
         boolean changed = !label.contentEquals(heroName.getText());
         if (cinematic) showHeroArt(position);
 
@@ -1937,27 +1939,54 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
 
         @Override public void onPosterVertical(Shelves.Item item, int keyCode) {
-            // Up: back to the dock (the tile the user came from). Down: the next rail, if any.
+            // Which rail holds the focus, and which poster in it?
             List<View> rails = shelfRailViews();
+            int railIndex = -1, col = 0;
+            for (int i = 0; i < rails.size(); i++) {
+                RecyclerView rv = (RecyclerView) rails.get(i);
+                View focused = rv.findFocus();
+                if (focused != null) {
+                    railIndex = i;
+                    col = rv.getChildAdapterPosition(focused);
+                    break;
+                }
+            }
+            if (railIndex < 0) return;
+
             if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
-                int dockPos = Math.max(0, Math.min(lastFocused % Math.max(1, COLUMNS),
-                        Math.max(0, adapter.dockFilled() - 1)));
-                focusTile(dockPos);
+                if (railIndex == 0) {
+                    // Top rail: back to the dock, in the column the user last used there.
+                    int dockPos = Math.max(0, Math.min(col, Math.max(0, adapter.dockFilled() - 1)));
+                    focusTile(dockPos);
+                } else {
+                    focusRailAt(rails, railIndex - 1, col);
+                }
                 return;
             }
-            // Down: focus the same column in the next rail when there is one.
-            for (int i = 0; i < rails.size() - 1; i++) {
-                View rail = rails.get(i);
-                RecyclerView rv = (RecyclerView) rail;
-                View focused = rv.findFocus();
-                if (focused == null) continue;
-                int col = ((RecyclerView.LayoutManager) rv.getLayoutManager()) instanceof LinearLayoutManager
-                        ? ((LinearLayoutManager) rv.getLayoutManager()).getPosition(focused) : 0;
-                RecyclerView next = (RecyclerView) rails.get(i + 1);
-                RecyclerView.ViewHolder vh = next.findViewHolderForAdapterPosition(Math.max(0, col));
+            // Down moves to the next shelf only; the last shelf keeps focus where it is.
+            if (railIndex + 1 < rails.size()) focusRailAt(rails, railIndex + 1, col);
+        }
+
+        /** Moves focus to a poster in another rail, keeping the column where possible. */
+        private void focusRailAt(List<View> rails, int index, int col) {
+            if (index < 0 || index >= rails.size()) return;
+            final RecyclerView rv = (RecyclerView) rails.get(index);
+            if (!(rv.getAdapter() instanceof ShelfRailAdapter)) return;
+            final int target = Math.max(0, Math.min(col, rv.getAdapter().getItemCount() - 1));
+            rv.scrollToPosition(target);
+            rv.post(() -> {
+                RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(target);
                 View card = vh != null ? vh.itemView.findViewById(R.id.card) : null;
-                if (card != null && card.requestFocus()) return;
-            }
+                if (card != null) {
+                    card.requestFocus();
+                } else {
+                    rv.post(() -> {
+                        RecyclerView.ViewHolder again = rv.findViewHolderForAdapterPosition(target);
+                        View c2 = again != null ? again.itemView.findViewById(R.id.card) : null;
+                        if (c2 != null) c2.requestFocus();
+                    });
+                }
+            });
         }
     };
 
