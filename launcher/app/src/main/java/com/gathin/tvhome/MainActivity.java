@@ -127,6 +127,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean shelvesPage;
     /** True while a one-off fetch for a swapped-in shelf is running, so it cannot loop. */
     private boolean refreshingShelves;
+
+    /** Page 1 wallpaper: a random shelf poster, swapped every two minutes while Home is in front. */
+    private static final long POSTER_WALLPAPER_MS = 2 * 60 * 1000L;
+    private final android.os.Handler wallpaperHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean posterWallpaperOn;
+    private String posterWallpaperCurrent;
+    /** The full-size poster showing as the page-1 wallpaper, so the previous one can be freed. */
+    private android.graphics.Bitmap wallpaperBitmap;
+    private final Runnable posterWallpaperTick = this::rotatePosterWallpaper;
     /** Top 10 shelf tiles, rebuilt when TMDB answers. */
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
@@ -143,6 +153,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      *  is started for it, so a focus move costs nothing extra on a launcher that runs all day. */
     private boolean ambientGlow;
     private ImageView heroArt;
+    /** Page-1 wallpaper: a blurred shelf poster, rotated every two minutes. */
+    private ImageView posterWallpaper;
+    /** Dark gradient over the wallpaper so the clock and pills stay readable. */
+    private View posterScrim;
     private static final float HERO_ART_ALPHA = 0.5f;
     /** Softened artwork per app (HeroArt, about 5 KB each), made the first time its dock tile is focused. */
     private final Map<String, Bitmap> heroArtCache = new HashMap<>();
@@ -360,6 +374,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroMeta = findViewById(R.id.heroMeta);
         heroDots = findViewById(R.id.heroDots);
         heroArt = findViewById(R.id.heroArt);
+        posterWallpaper = findViewById(R.id.posterWallpaper);
+        posterScrim = findViewById(R.id.posterScrim);
         cinematic = cfg.cinematicHome;
         if (cinematic) setUpCinematicShelf();
         // dock_title false: the name above the dock (and the cinematic lines under it) never shows; the glow
@@ -682,6 +698,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             registerReceiver(timeReceiver, timeFilter);
         }
         updateClockVisibility();
+        if (!shelvesPage) startPosterWallpaper();   // returning from an app
     }
 
     @Override
@@ -853,6 +870,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         unregisterReceiver(packageReceiver);
         unregisterReceiver(timeReceiver);
         handler.removeCallbacks(clockCheck);
+        stopPosterWallpaper();               // an app is opening: hold the wallpaper still
         stopped = true;
         rebuildOnResume = true;
     }
@@ -1899,6 +1917,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (gridPage != null) gridPage.setVisibility(View.INVISIBLE);
         // The dock's big app name belongs to page 1; hide it, but keep the artwork as the backdrop.
         hideHeroKeepArt();
+        stopPosterWallpaper();               // the wallpaper holds still on page 2
+        if (posterWallpaper != null) posterWallpaper.animate().alpha(0f).setDuration(200).start();
+        if (posterScrim != null) posterScrim.animate().alpha(0f).setDuration(200).start();
         focusShelfPoster(0, 0);
     }
 
@@ -1909,10 +1930,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View block = findViewById(R.id.shelfBlock);
         if (gridPage != null) gridPage.setVisibility(View.VISIBLE);
         if (block != null) block.setVisibility(View.GONE);
-        if (!cinematic) {
-            heroArt.animate().alpha(0f).setDuration(200).start();
-            heroArtKey = null;
-        }
+        // Resume the page-1 wallpaper.
+        startPosterWallpaper();
         int dockPos = Math.max(0, Math.min(lastFocused % Math.max(1, COLUMNS),
                 Math.max(0, adapter.dockFilled() - 1)));
         focusTile(dockPos);
@@ -1956,6 +1975,84 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return out;
     }
 
+    /**
+     * Page 1 wallpaper: pick a random poster from the two visible shelves and show it blurred behind
+     * the dock, then again in two minutes. Runs only while page 1 is in front.
+     */
+    private void startPosterWallpaper() {
+        posterWallpaperOn = true;
+        // Always rotate now: onStart runs before the shelf catalogue has loaded, so the first attempt
+        // finds nothing; the catalogue callback calls this again and must actually paint.
+        rotatePosterWallpaper();
+    }
+
+    private void stopPosterWallpaper() {
+        posterWallpaperOn = false;
+        wallpaperHandler.removeCallbacks(posterWallpaperTick);
+    }
+
+    private void rotatePosterWallpaper() {
+        wallpaperHandler.removeCallbacks(posterWallpaperTick);
+        if (!posterWallpaperOn || shelvesPage) return;
+
+        Shelves.Item pick = randomShelfPoster();
+        if (pick != null && pick.posterUrl != null) {
+            // Ask TMDB's CDN for a bigger copy than the 342px tile thumbnail: a full-screen poster
+            // needs the detail, and the path is the only thing that changes.
+            String big = pick.posterUrl.replace("/w342/", "/w780/");
+            int w = getResources().getDisplayMetrics().widthPixels;
+            int h = getResources().getDisplayMetrics().heightPixels;
+            android.graphics.Bitmap bmp = posterCache.getWallpaper(big, w, h);
+            if (bmp == null) {
+                // Not on disk yet: warm it and retry soon, not in two minutes.
+                posterCache.prefetch(big);
+                wallpaperHandler.postDelayed(posterWallpaperTick, 1200);
+                return;
+            }
+            if (posterWallpaper != null) {
+                final android.graphics.Bitmap previous = wallpaperBitmap;
+                wallpaperBitmap = bmp;
+                posterWallpaperCurrent = pick.posterUrl;
+                posterWallpaper.setVisibility(View.VISIBLE);
+                posterWallpaper.setImageBitmap(bmp);
+                if (posterScrim != null) {
+                    posterScrim.setVisibility(View.VISIBLE);
+                    posterScrim.animate().alpha(1f).setDuration(650).start();
+                }
+                posterWallpaper.animate().alpha(1f).setDuration(650)
+                        .withEndAction(() -> {
+                            // Drop the old full-size bitmap once it is off screen.
+                            if (previous != null && previous != bmp && !previous.isRecycled()) {
+                                previous.recycle();
+                            }
+                        }).start();
+            }
+        }
+        wallpaperHandler.postDelayed(posterWallpaperTick, POSTER_WALLPAPER_MS);
+    }
+
+    /** A random poster from the two shelves on screen, never the one already showing. */
+    private Shelves.Item randomShelfPoster() {
+        List<Shelves.Item> pool = new ArrayList<>();
+        String[] slots = ShelfSlots.load(this);
+        for (String id : slots) {
+            Shelves.Source src = catalog.get(id);
+            if (src == null) continue;
+            for (Shelves.Item item : src.items) {
+                if (item.posterUrl != null && !item.posterUrl.equals(posterWallpaperCurrent)) {
+                    pool.add(item);
+                }
+            }
+        }
+        if (pool.isEmpty()) {
+            for (String id : slots) {
+                Shelves.Source src = catalog.get(id);
+                if (src != null) pool.addAll(src.items);
+            }
+        }
+        return pool.isEmpty() ? null : pool.get(new java.util.Random().nextInt(pool.size()));
+    }
+
     /** Fills the shelves page from the catalogue, honouring the saved slot choices. */
     private void loadShelves() {
         Shelves.get(this, BuildConfig.TMDB_API_KEY, (catalog, cached) -> {
@@ -1963,6 +2060,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             this.catalog.clear();
             this.catalog.putAll(catalog);
             buildShelfPage();
+            if (!shelvesPage) startPosterWallpaper();
         });
     }
 

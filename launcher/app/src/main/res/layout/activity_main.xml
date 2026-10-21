@@ -30,6 +30,27 @@
         android:layout_height="match_parent"
         android:alpha="0" />
 
+    <!-- Page-1 wallpaper: a shelf poster, blurred and swapped every two minutes. Sits above the
+         ambient glow so the glow cannot cover it, and below the dock. -->
+    <ImageView
+        android:id="@+id/posterWallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0"
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
+
+    <!-- Scrim over the wallpaper so the clock and pills stay readable on a bright poster. -->
+    <View
+        android:id="@+id/posterScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/wallpaper_scrim"
+        android:alpha="0"
+        android:visibility="gone"
+        android:importantForAccessibility="no" />
+
     <!-- Race-weekend panel (a theme's race_calendar, see RaceWeekend): in the free space under the clock,
          shown only from shortly before a weekend's first session until the race is over. Updated once a
          minute with the clock, never animated. -->

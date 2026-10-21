@@ -77,6 +77,21 @@ final class PosterCache {
         return bmp;
     }
 
+    /**
+     * A full-size poster for the page-1 wallpaper, decoded straight from disk at the size asked for.
+     * The file is kept (the wallpaper may show it again), and nothing is put in the tile LRU, so a
+     * large wallpaper bitmap cannot evict the small shelf tiles.
+     */
+    Bitmap getWallpaper(String url, int reqW, int reqH) {
+        if (url == null || reqW <= 0 || reqH <= 0) return null;
+        File f = file(key(url));
+        if (!f.exists()) {
+            prefetch(url);
+            return null;
+        }
+        return decode(f, reqW, reqH);
+    }
+
     /** True when this poster is already decoded and ready to draw. */
     boolean isReady(String url) {
         return url != null && memory.get(key(url)) != null;
