@@ -125,6 +125,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private final java.util.Map<String, Shelves.Source> catalog = new java.util.LinkedHashMap<>();
     /** True while the shelves page (page 2) is showing instead of the dock page. */
     private boolean shelvesPage;
+    /** True while a one-off fetch for a swapped-in shelf is running, so it cannot loop. */
+    private boolean refreshingShelves;
     /** Top 10 shelf tiles, rebuilt when TMDB answers. */
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
@@ -1596,6 +1598,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }).start();
     }
 
+    /**
+     * Page 2: the dock's big name and its glow belong to page 1, but the blurred artwork stays —
+     * it becomes the cinematic backdrop for whichever poster is focused.
+     */
+    private void hideHeroKeepArt() {
+        stopAmbientAnimation();
+        hero.animate().cancel();
+        ambient.animate().cancel();
+        heroShown = false;
+        hero.animate().alpha(0f).setDuration(reducedMotion ? 100 : 160).start();
+        if (ambientGlow) ambient.animate().alpha(0f).setDuration(reducedMotion ? 140 : 260).start();
+    }
+
     private void hideHero() {
         if (!heroShown) return;
         stopAmbientAnimation();
@@ -1882,8 +1897,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         block.setVisibility(View.VISIBLE);
         if (gridPage != null) gridPage.setVisibility(View.INVISIBLE);
-        // The dock's big app name belongs to page 1; hide it so it cannot overlap the shelf headings.
-        hideHero();
+        // The dock's big app name belongs to page 1; hide it, but keep the artwork as the backdrop.
+        hideHeroKeepArt();
         focusShelfPoster(0, 0);
     }
 
@@ -1894,6 +1909,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View block = findViewById(R.id.shelfBlock);
         if (gridPage != null) gridPage.setVisibility(View.VISIBLE);
         if (block != null) block.setVisibility(View.GONE);
+        if (!cinematic) {
+            heroArt.animate().alpha(0f).setDuration(200).start();
+            heroArtKey = null;
+        }
         int dockPos = Math.max(0, Math.min(lastFocused % Math.max(1, COLUMNS),
                 Math.max(0, adapter.dockFilled() - 1)));
         focusTile(dockPos);
@@ -1955,18 +1974,31 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         container.removeAllViews();
 
         String[] slots = ShelfSlots.load(this);
+        boolean missing = false;
         for (int i = 0; i < ShelfSlots.SLOTS; i++) {
             Shelves.Source src = catalog.get(slots[i]);
-            if (src == null || src.items.isEmpty()) continue;
-            container.addView(buildShelfRow(container, i, src));
-        }
-        if (container.getChildCount() == 0) {
-            // Nothing fetched yet: keep the page available with the configured titles so it is not blank.
-            for (int i = 0; i < ShelfSlots.SLOTS; i++) {
+            if (src != null && !src.items.isEmpty()) {
+                container.addView(buildShelfRow(container, i, src));
+            } else {
+                // The slot points at a source this cache has not fetched yet: keep the shelf visible
+                // with its heading (so it does not vanish on a swap) and refresh below.
                 container.addView(buildEmptyShelfRow(container, i, Shelves.titleOf(slots[i])));
+                missing = true;
             }
         }
         if (shelvesPage) container.setVisibility(View.VISIBLE);
+
+        // A swapped-in source that is not in the cache yet: fetch it once, then rebuild.
+        if (missing && !refreshingShelves) {
+            refreshingShelves = true;
+            Shelves.refresh(this, BuildConfig.TMDB_API_KEY, (fresh, cached) -> {
+                refreshingShelves = false;
+                if (isFinishing()) return;
+                catalog.clear();
+                catalog.putAll(fresh);
+                buildShelfPage();
+            });
+        }
     }
 
     /** One shelf: heading + a horizontal rail of posters. */
@@ -1998,6 +2030,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         RecyclerView rail = row.findViewById(R.id.shelfRail);
         rail.setLayoutManager(new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false));
         rail.setAdapter(null);
+        ViewGroup.LayoutParams lp = rail.getLayoutParams();
+        lp.height = Math.round(ShelfRailAdapter.railHeightDp() * getResources().getDisplayMetrics().density);
+        rail.setLayoutParams(lp);
         return row;
     }
 
@@ -2104,8 +2139,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         heroArtKey = key;
         if (art == null) return;
+        heroArt.setVisibility(View.VISIBLE);
         heroArt.setImageBitmap(art);
-        heroArt.animate().alpha(HERO_ART_ALPHA).setDuration(420).start();
+        // A touch stronger on page 2: the shelves have no ambient glow behind them.
+        heroArt.animate().alpha(shelvesPage ? 0.7f : HERO_ART_ALPHA).setDuration(420).start();
     }
 
     /** The launcher's motion setting, read by the poster tiles for their focus scale. */
@@ -2838,6 +2875,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * event was consumed (the menu opened, or the key-up after it), so the tile is not also opened.
      */
     private boolean handleTileHold(KeyEvent event) {
+        // The dock's hold menu belongs to page 1 only. On the shelves page a hold is the shelf's own
+        // "replace shelf" menu, which the rail handles; without this guard the fallback to the last
+        // dock tile opened App info there too.
+        if (shelvesPage) return false;
         int code = event.getKeyCode();
         boolean okKey = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
@@ -2900,8 +2941,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             int pos = vh.getBindingAdapterPosition();
             if (pos != RecyclerView.NO_POSITION) return pos;
         }
-        // The focused view is often the grid itself, or a child of the tile: fall back to the tile the
-        // user last focused, which on this screen is always the one they are pointing at.
+        // Fall back to the tile the user last focused, but only while page 1 is the visible page.
+        if (shelvesPage) return -1;
         return lastFocused >= 0 && lastFocused < adapter.appCount() ? lastFocused : -1;
     }
 
