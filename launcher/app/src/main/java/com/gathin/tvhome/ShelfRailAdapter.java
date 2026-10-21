@@ -24,12 +24,11 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
     /** Poster width in dp; height follows the 2:3 ratio. Two shelves fit the screen at this size. */
     private static final int POSTER_W_DP = 88;
     private static final float FOCUS_SCALE = 1.06f;
-    private static final int NAME_DP = 18;
-    private static final int PAD_DP = 6;
+    private static final int NAME_DP = 22;
 
-    /** Height one rail needs: 2:3 poster + name line + breathing room. */
+    /** Height one rail needs: the 2:3 poster plus the one-line title under it. */
     static int railHeightDp() {
-        return Math.round(POSTER_W_DP * 3f / 2f) + NAME_DP + PAD_DP;
+        return Math.round(POSTER_W_DP * 3f / 2f) + NAME_DP;
     }
 
     interface Listener {
@@ -86,9 +85,15 @@ final class ShelfRailAdapter extends RecyclerView.Adapter<ShelfRailAdapter.Poste
         View name = v.findViewById(R.id.name);
         ViewGroup.MarginLayoutParams nlp = (ViewGroup.MarginLayoutParams) name.getLayoutParams();
         nlp.width = w;
-        nlp.topMargin = h + Math.round(4 * density);
+        nlp.topMargin = h + Math.round(2 * density);
         name.setLayoutParams(nlp);
 
+        // The rail gives every item an exact height, so the title under a poster can never be clipped.
+        ViewGroup.LayoutParams rootLp = v.getLayoutParams();
+        if (rootLp != null) {
+            rootLp.height = Math.round(railHeightDp() * density);
+            v.setLayoutParams(rootLp);
+        }
         return new PosterVh(v);
     }
 

@@ -2046,7 +2046,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (railIndex < 0 || railIndex >= rails.size()) return 0;
         RecyclerView rv = rails.get(railIndex);
         View focused = rv.findFocus();
-        return focused != null ? rv.getChildAdapterPosition(focused) : 0;
+        if (focused == null) return 0;
+        // The focused view is the card inside the item, not a direct child of the RecyclerView, so
+        // getChildAdapterPosition would throw; ask for the containing holder instead.
+        RecyclerView.ViewHolder vh = rv.findContainingViewHolder(focused);
+        int pos = vh != null ? vh.getBindingAdapterPosition() : RecyclerView.NO_POSITION;
+        return pos == RecyclerView.NO_POSITION ? 0 : pos;
     }
 
     /** "Hold OK on a poster" menu: replace this shelf with another source. */
