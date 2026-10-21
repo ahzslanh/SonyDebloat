@@ -1815,8 +1815,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
             if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
+            // The dock is now the first row, with the shelves under it: Up from the first shelf row
+            // returns to the dock.
+            if (adapter.isShelfAt(position)) {
+                focusTile(Math.min(lastFocused % COLUMNS, adapter.dockFilled() - 1));
+                return true;
+            }
             target = position - COLUMNS;
         } else {
+            // Down from the dock row enters the first shelf, when one is present.
+            if (position < COLUMNS && adapter.hasShelves()) {
+                focusFirstShelfPoster();
+                return true;
+            }
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
             if (position >= lastRowStart) {
                 if (adapter.isLibraryAt(count)) focusLibrary();
@@ -1854,6 +1865,31 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * Loads the three shelves from the cached list (refreshing in the background when stale) and
      * hands them to the adapter, so they are drawn as grid rows right under the dock.
      */
+    /** Moves focus from the dock into the first poster of the first shelf rail. */
+    private void focusFirstShelfPoster() {
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View child = grid.getChildAt(i);
+            if (!(child instanceof ViewGroup)) continue;
+            RecyclerView rail = child.findViewById(R.id.shelfRail);
+            if (rail == null) continue;
+            RecyclerView.ViewHolder first = rail.findViewHolderForAdapterPosition(0);
+            View card = first != null ? first.itemView.findViewById(R.id.card) : null;
+            if (card != null && card.requestFocus()) return;
+        }
+    }
+
+    /** The shelf rails in the order they appear under the dock. */
+    private List<View> shelfRailViews() {
+        List<View> out = new ArrayList<>();
+        for (int i = 0; i < grid.getChildCount(); i++) {
+            View child = grid.getChildAt(i);
+            if (!(child instanceof ViewGroup)) continue;
+            View rail = child.findViewById(R.id.shelfRail);
+            if (rail != null) out.add(rail);
+        }
+        return out;
+    }
+
     /** How many shelf rows are currently shown. */
     private int shellBlockChildCount() {
         return adapter == null ? 0 : adapter.shelfCount();
@@ -1886,6 +1922,30 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         @Override public void onPosterFocused(Shelves.Item item) {
             // The backdrop follows the focused poster's artwork, like the dock tiles do.
             showPosterBackdrop(item);
+        }
+
+        @Override public void onPosterVertical(Shelves.Item item, int keyCode) {
+            // Up: back to the dock (the tile the user came from). Down: the next rail, if any.
+            List<View> rails = shelfRailViews();
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+                int dockPos = Math.max(0, Math.min(lastFocused % Math.max(1, COLUMNS),
+                        Math.max(0, adapter.dockFilled() - 1)));
+                focusTile(dockPos);
+                return;
+            }
+            // Down: focus the same column in the next rail when there is one.
+            for (int i = 0; i < rails.size() - 1; i++) {
+                View rail = rails.get(i);
+                RecyclerView rv = (RecyclerView) rail;
+                View focused = rv.findFocus();
+                if (focused == null) continue;
+                int col = ((RecyclerView.LayoutManager) rv.getLayoutManager()) instanceof LinearLayoutManager
+                        ? ((LinearLayoutManager) rv.getLayoutManager()).getPosition(focused) : 0;
+                RecyclerView next = (RecyclerView) rails.get(i + 1);
+                RecyclerView.ViewHolder vh = next.findViewHolderForAdapterPosition(Math.max(0, col));
+                View card = vh != null ? vh.itemView.findViewById(R.id.card) : null;
+                if (card != null && card.requestFocus()) return;
+            }
         }
     };
 
