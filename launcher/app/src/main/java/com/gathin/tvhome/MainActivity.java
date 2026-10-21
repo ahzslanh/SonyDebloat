@@ -557,12 +557,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
+        // The dock's big name and selection box belong to the dock: hide them the moment focus
+        // moves up to the top bar.
+        View.OnFocusChangeListener leavingDock = (v, focused) -> {
+            if (focused) { hideGlass(); hideHero(); }
+        };
+        btnInputs.setOnFocusChangeListener(leavingDock);
         btnInputs.setOnClickListener(v -> showInputs());
+        btnWifi.setOnFocusChangeListener(leavingDock);
         btnWifi.setOnClickListener(v -> openNetworkPill());
         btnWifi.setOnLongClickListener(v -> {
             open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
             return true;
         });
+        btnSettings.setOnFocusChangeListener(leavingDock);
         btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
         btnReorder = findViewById(R.id.btnReorder);
         btnReorder.setOnClickListener(v -> toggleReorder());
@@ -673,6 +681,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onNewIntent(intent);
         if (openLauncherSettingsIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
+        // Home always means page 1. Without this the shelves page stayed up and the dock page
+        // showed through behind it, along with the dock's selection box.
+        if (shelvesPage) {
+            showDockPage();
+            return;
+        }
         grid.scrollToPosition(0);
         lastFocused = 0;
         lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
@@ -1917,6 +1931,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (gridPage != null) gridPage.setVisibility(View.INVISIBLE);
         // The dock's big app name belongs to page 1; hide it, but keep the artwork as the backdrop.
         hideHeroKeepArt();
+        hideGlass();                         // the dock's selection box must not float over page 2
         stopPosterWallpaper();               // the wallpaper holds still on page 2
         if (posterWallpaper != null) posterWallpaper.animate().alpha(0f).setDuration(200).start();
         if (posterScrim != null) posterScrim.animate().alpha(0f).setDuration(200).start();
