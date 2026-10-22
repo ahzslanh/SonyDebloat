@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:padding="4dp">
+
+    <ImageView
+        android:id="@+id/thumb"
+        android:layout_width="160dp"
+        android:layout_height="225dp"
+        android:layout_gravity="center"
+        android:scaleType="centerCrop"
+        android:background="@drawable/glass_card"
+        android:contentDescription="@null" />
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="156dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="6dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="4"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+</FrameLayout>

@@ -2245,7 +2245,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         View panel = getLayoutInflater().inflate(R.layout.popup_tile_menu, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
-        ((TextView) panel.findViewById(R.id.menuTitle)).setText("Replace shelf");
+        ((TextView) panel.findViewById(R.id.menuTitle)).setText("Customize");
 
         final PopupWindow popup = glassPopup(panel, (int) (300 * density));
         popup.setOnDismissListener(() -> {

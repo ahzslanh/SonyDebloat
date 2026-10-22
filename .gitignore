@@ -14,3 +14,13 @@ backup/
 *.aab
 launcher/hs_err_pid*.log
 launcher/replay_pid*.log
+
+# ...except the launcher's restore points: they are the way back to a known-good
+# build, so sony-debloat/apk-backups/ is kept in the repo.
+!sony-debloat/apk-backups/*.apk
+
+# The archived first launcher skeleton (superseded by launcher/): keep its sources,
+# leave its build output out.
+archive/**/build/
+archive/**/.gradle/
+archive/**/local.properties

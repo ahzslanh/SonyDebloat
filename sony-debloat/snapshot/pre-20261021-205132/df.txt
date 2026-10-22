@@ -1,0 +1,13 @@
+Filesystem            Size  Used Avail Use% Mounted on
+/dev/root             1.4G  1.3G   98M  94% /
+tmpfs                 782M  800K  782M   1% /dev
+tmpfs                 782M     0  782M   0% /mnt
+/dev/block/dm-1       184M  153M   28M  85% /vendor
+tmpfs                 782M     0  782M   0% /apex
+tmpfs                 782M  208K  782M   1% /linkerconfig
+/dev/block/mmcblk0p2   11G  1.5G   10G  14% /data
+/dev/block/mmcblk0p3  488M  1.5M  451M   1% /cache
+/dev/block/mmcblk0p11 184M   13M  168M   8% /product
+/dev/block/mmcblk0p12  11M  248K   11M   3% /tvconfigs
+/dev/block/mmcblk0p14 3.7M   72K  3.4M   3% /takeover
+/dev/fuse              11G  1.5G   10G  14% /storage/emulated

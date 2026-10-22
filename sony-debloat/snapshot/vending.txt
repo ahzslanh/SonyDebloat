@@ -1,0 +1,225 @@
+
+Queries:
+  system apps queryable: false
+  forceQueryable:
+    [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+    [com.android.bluetooth,com.sony.dtv.ipcontrol]
+    com.android.se
+    com.android.networkstack.permissionconfig
+    com.android.shell
+    com.google.android.overlay.modules.ext.services
+    com.google.android.overlay.modules.permissioncontroller.forframework
+    com.google.android.overlay.modules.modulemetadata.forframework
+    [com.android.providers.userdictionary,com.android.providers.contacts]
+    com.realtek.providers.tv
+    com.android.backupconfirm
+    com.android.proxyhandler
+    com.android.providers.tv
+    com.google.android.packageinstaller
+    [com.android.providers.media,com.android.providers.downloads,com.android.soundpicker]
+    com.android.sharedstoragebackup
+    com.google.android.katniss
+    com.android.vending
+    com.google.android.tungsten.setupwraith
+    [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]
+    com.android.externalstorage
+    com.android.vpndialogs
+    com.android.providers.calendar
+    com.android.captiveportallogin
+    com.sony.dtv.eulaviewer
+    com.android.companiondevicemanager
+    com.realtek.tv.atv
+    com.sony.dtv.provider.modelvariation
+    com.google.android.tts
+    com.realtek.tvmediaplay
+    com.sony.dtv.ipcontrolaux
+    com.sony.dtv.softwarelicense
+    com.sony.dtv.demo
+    com.sony.dtv.timers
+    com.android.pacprocessor
+    com.google.android.marvin.talkback
+    com.sony.dtv.helpguidecontents
+    com.android.certinstaller
+    com.android.wallpaper.livepicker
+    com.realtek.tv.passthrough
+    com.sony.dtv.ime.chww
+    com.sony.dtv.smarthelp
+    com.sony.dtv.common.base.AccessibilityText
+    com.android.systemui
+    com.google.android.tv.frameworkpackagestubs
+    com.android.providers.media.module
+    com.google.android.ext.services
+    com.google.android.permissioncontroller
+  queries via package name:
+    com.google.android.katniss:
+      com.google.android.tv.remote.service
+    [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]:
+      com.google.android.modulemetadata
+    com.google.android.backdrop:
+      com.google.android.tvrecommendations
+      com.google.android.apps.mediashell
+    com.netflix.ninja:
+      com.google.android.apps.mediashell
+    com.google.android.inputmethod.latin:
+      com.google.android.tv.remote.service
+  queries via intent:
+    com.android.vending:
+      com.google.android.videos
+      org.videolan.vlc
+    [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]:
+      org.videolan.vlc
+    com.google.android.play.games:
+      com.google.android.youtube.tv
+      com.google.android.youtube.tvmusic
+      com.netflix.ninja
+      com.android.camera2
+      com.android.gallery3d
+      org.videolan.vlc
+  queryable via interaction:
+    User 0:
+      [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]:
+        [com.android.bluetooth,com.sony.dtv.ipcontrol]
+        [com.android.providers.userdictionary,com.android.providers.contacts]
+        com.realtek.providers.tv
+        com.android.providers.tv
+        com.google.android.tvrecommendations
+        [com.android.providers.media,com.android.providers.downloads,com.android.soundpicker]
+        com.google.android.apps.mediashell
+        com.google.android.katniss
+        com.android.vending
+        com.google.android.tungsten.setupwraith
+        [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]
+        com.google.android.tvlauncher
+        com.android.externalstorage
+        com.android.providers.calendar
+        com.google.android.tv.remote.service
+        com.google.android.youtube.tv
+        com.realtek.tv.atv
+        com.google.android.tts
+        com.netflix.ninja
+        com.google.android.syncadapters.calendar
+        com.google.android.inputmethod.latin
+        com.google.android.partnersetup
+        com.android.systemui
+        com.android.providers.media.module
+        com.google.android.ext.services
+        com.google.android.permissioncontroller
+        org.videolan.vlc
+      [com.android.bluetooth,com.sony.dtv.ipcontrol]:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      [com.android.providers.userdictionary,com.android.providers.contacts]:
+        [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]
+        com.google.android.inputmethod.latin
+      com.realtek.providers.tv:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.realtek.tv.atv
+      com.android.providers.tv:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.realtek.providers.tv
+        com.google.android.tvrecommendations
+        com.google.android.apps.mediashell
+        com.google.android.tvlauncher
+        com.realtek.tv.atv
+        com.netflix.ninja
+        org.videolan.vlc
+      com.google.android.tvrecommendations:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.tvlauncher
+      [com.android.providers.media,com.android.providers.downloads,com.android.soundpicker]:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.apps.mediashell:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.katniss
+        com.netflix.ninja
+      com.google.android.katniss:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.tvlauncher
+        com.netflix.ninja
+      com.android.vending:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.tvrecommendations
+        [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]
+      com.google.android.tungsten.setupwraith:
+        com.android.settings.intelligence
+      [com.google.android.gsf,com.google.android.gms,com.google.android.sss.authbridge]:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        [com.android.providers.userdictionary,com.android.providers.contacts]
+        com.google.android.tvrecommendations
+        com.google.android.apps.mediashell
+        com.google.android.katniss
+        com.android.vending
+        com.google.android.tungsten.setupwraith
+        com.google.android.tvlauncher
+        com.google.android.tv.remote.service
+        com.google.android.youtube.tv
+        com.google.android.tts
+        com.netflix.ninja
+        com.google.android.webview
+        com.google.android.syncadapters.calendar
+        com.google.android.inputmethod.latin
+        com.google.android.partnersetup
+      com.google.android.tvlauncher:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.android.providers.calendar:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.syncadapters.calendar
+      com.google.android.tv.remote.service:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.katniss
+        com.google.android.inputmethod.latin
+      com.google.android.youtube.tv:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.realtek.tv.atv:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.sony.dtv.provider.modelvariation:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.tts:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.sony.dtv.timers:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.netflix.ninja:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.realtek.tv.passthrough:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.syncadapters.calendar:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.inputmethod.latin:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        com.google.android.tvrecommendations
+        com.google.android.apps.mediashell
+        com.google.android.tvlauncher
+        com.netflix.ninja
+        com.google.android.permissioncontroller
+        org.videolan.vlc
+      com.android.settings.intelligence:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.android.gallery3d:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.partnersetup:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.android.systemui:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.android.providers.media.module:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.ext.services:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+      com.google.android.permissioncontroller:
+        [com.android.location.fused,com.realtek.servicemenu,com.realtek.tv.settings,com.android.tv,android,com.android.localtransport,com.realtek.dtv,com.sony.dtv.smartui,com.sony.qrmt,com.android.inputdevices,com.android.networkstack.inprocess,com.sony.dtv.sonysystemservice,com.android.wallpaperbackup,com.android.dynsystem,com.android.providers.settings,com.android.networkstack.tethering.inprocess,com.android.tv.settings,com.android.keychain,com.sony.dtv.remotecontrolsettings,com.realtek.tv.actionmenu,com.realtek.media.notification,com.realtek.usbupdate,com.realtek.advancesetting]
+        org.videolan.vlc
+
+Package Changes:
+  Sequence number=71
+  User 0:
+    seq=1, package=com.google.android.tvrecommendations
+    seq=34, package=com.android.vending
+    seq=44, package=com.android.shell
+    seq=62, package=com.google.android.gms
+    seq=70, package=com.netflix.ninja
+
+
+Dexopt state:
+  Unable to find package: com.google.android.vending
+
+
+Compiler stats:
+  Unable to find package: com.google.android.vending
